@@ -6,7 +6,6 @@ import { Buffer } from 'buffer'
 import { stringify } from 'querystring'
 import { EventEmitter } from 'stream'
 
-const ID_SIZE = 0
 console.time()
 
 type rP = Parameters<typeof fs.createReadStream>
@@ -18,7 +17,7 @@ function readBinary(path: rP[0], options?: rP[1]) {
     str.on('end', () => console.log('ll', chunks, chunks.length)) //A 5.609ms
 }
 function calculateRowSize(schema: schema) {
-    let bytes = ID_SIZE
+    let bytes = 0
     for (const col of schema) {
         switch (col[1]) {
             case 'string':
@@ -141,11 +140,6 @@ class Table extends EventEmitter {
 
         //console.log(size, this.start, this.rowSize, rowCount)
         if (!Number.isInteger(rowCount)) throw 'non integer rowCount'
-        if (ID_SIZE > 0) {
-            const tempBuff = Buffer.allocUnsafe(ID_SIZE)
-            tempBuff.writeIntLE(rowCount + 1, 0, ID_SIZE)
-            buff = Buffer.concat([tempBuff, buff])
-        }
         // fs.appendFileSync(this.path, buff, { encoding: 'binary' })
         // this.emit(symbol, rowCount + 1)
         this.writeStream.write(buff, () => this.emit(symbol, rowCount + 1))
@@ -184,7 +178,7 @@ class Table extends EventEmitter {
                 buffers.push(buff)
             }
             const newRow = Buffer.concat(buffers)
-            const padding = this.rowSize - newRow.length - ID_SIZE //4 for id
+            const padding = this.rowSize - newRow.length
             //final reduntant check
             if (padding < 0) {
                 throw 'row too large'
@@ -216,10 +210,8 @@ class Table extends EventEmitter {
             })
             let chunks = []
             str.on('data', (chunk: Buffer) => {
-                let offset = ID_SIZE
-                const out: { [key: string]: any } = ID_SIZE
-                    ? { id: chunk.readIntLE(0, ID_SIZE) }
-                    : { id }
+                let offset = 0
+                const out: { [key: string]: any } = { id }
                 for (let i = 0; i < this.columns?.length; i++) {
                     switch (this.columns[i][1]) {
                         case 'string':

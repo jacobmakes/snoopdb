@@ -6,6 +6,8 @@ import { Buffer } from 'buffer'
 import { stringify } from 'querystring'
 import { EventEmitter } from 'stream'
 import { resolve } from 'path'
+import { CreateReadStreamOptions } from 'fs/promises'
+import { ReadStreamOptions } from '../types'
 
 console.time()
 
@@ -60,6 +62,15 @@ interface queueItem {
 }
 interface tableConfig {
     overwrite?: boolean
+}
+
+interface queryOptions {
+    columns?: string[]
+    where?: {
+        [key: string]: (arg: number | string) => boolean
+    }
+    limit?: number
+    offset?: number
 }
 
 class Table extends EventEmitter {
@@ -263,7 +274,6 @@ class Table extends EventEmitter {
                 end: offset + this.rowSize - 1,
                 highWaterMark: this.rowSize + 1,
             })
-            let chunks = []
             str.on('data', (chunk: Buffer) => {
                 let offset = 0
                 const out: { [key: string]: any } = { id }
@@ -289,6 +299,7 @@ class Table extends EventEmitter {
                 resolve(out)
             })
             //below for larger sizes
+            // let chunks = []
             // str.on('data', (chunk) => chunks.push(Buffer.from(chunk))) //A & B
             // str.on('end', () => {
             //     const buff = Buffer.concat(chunks)
@@ -297,6 +308,74 @@ class Table extends EventEmitter {
             //     console.log(buff, buff.readIntLE(8, 4), chunks.length)
             //     resolve(chunks)
             // })
+        })
+    }
+
+    public async select(options: queryOptions = {}) {
+        return new Promise(async (resolve, reject) => {
+            console.log('starting')
+            let resultCount = 0
+            const rowsPerChunk = 10
+            const streamConfig: ReadStreamOptions = {
+                start: this.start,
+                highWaterMark: this.rowSize * rowsPerChunk,
+            }
+            // if (options.limit) {
+            //     streamConfig.end = options.limit * this.rowSize
+            // }
+            const str = fs.createReadStream(this.path, streamConfig)
+            const search = (str: string) => str.includes('gg')
+            let results: any[] = []
+            let chunkIndex = -1
+            str.on('data', (chunk: Buffer) => {
+                chunkIndex++
+                chunkLoop: for (let i = 0; i < rowsPerChunk; i++) {
+                    const rowOffset = i * this.rowSize
+                    let colOffset = 0
+                    const cols = this.columns
+                    const out: { [key: string]: any } = { id: chunkIndex * rowsPerChunk + i + 1 }
+
+                    for (let i = 0; i < cols.length; i++) {
+                        switch (cols[i][1]) {
+                            case 'string':
+                                const str = chunk.toString(
+                                    'utf-8',
+                                    colOffset + rowOffset,
+                                    colOffset + rowOffset + cols[i][2]
+                                )
+                                //checks where function
+                                const filter = options?.where?.[cols[i][0]]
+                                if (filter && filter(str) === false) continue chunkLoop
+
+                                out[cols[i][0]] = str
+                                colOffset += cols[i][2]
+                                break
+                            case 'int':
+                                out[cols[i][0]] = chunk.readIntLE(colOffset + rowOffset, cols[i][2])
+                                colOffset += cols[i][2]
+                                break
+
+                            default:
+                                break
+                        }
+                    }
+                    results.push(out)
+
+                    resultCount++
+                    if (options.limit && resultCount >= options.limit) {
+                        str.close()
+                        resolve(results)
+                        break
+                    }
+                }
+                //process.exit()
+            }) //A & B
+            str.on('end', () => {
+                // console.log(buff, chunks.length)
+                // console.log(buff.toString('utf8', 0, 8), chunks.length)
+                // console.log(buff, buff.readIntLE(8, 4), chunks.length)
+                resolve(results)
+            })
         })
     }
 }
@@ -332,17 +411,33 @@ async function main() {
 
     console.timeLog()
 }
-// main()
+//main()
 
 async function read() {
-    const books = new Table('samples/cars.db') //6million
+    const cars = new Table('samples/cars.db') //6million
     // books.createTable('books', schema2, { overwrite: true })
-    await books.getTable()
-    console.log(await books.getRowCount())
-    const dat = await books.read(5555555)
-    console.log('dat', dat)
+    await cars.getTable()
+    console.log(await cars.getRowCount())
+    console.log('dat', await cars.read(8195))
 }
-read()
+//read()
+async function q() {
+    const cars = new Table('samples/cars.db') //6million
+    // books.createTable('books', schema2, { overwrite: true })
+    await cars.getTable()
+    console.time('ff')
+    const dat = await cars.select({
+        limit: 4,
+        where: {
+            model: (str: string) => str.includes('vv'),
+        },
+    })
+    console.log('dat', dat)
+
+    console.timeEnd('ff')
+    //console.log('dat', dat)
+}
+q()
 
 function randomString() {
     return Math.random().toString(36).slice(2, 7)

@@ -150,8 +150,9 @@ class Table extends EventEmitter {
                 const readSchema = fs.createReadStream(this.path, {
                     start: 12,
                     end: schemaEnd - 1,
-                    highWaterMark: schemaEnd,
+                    highWaterMark: schemaEnd, //uneessacary?
                 })
+                //not calling on end because high water mark so low
                 readSchema.on('data', (chunk: Buffer) => {
                     console.log('cols', chunk.toString())
                     const cols = JSON.parse(chunk.toString())
@@ -203,9 +204,8 @@ class Table extends EventEmitter {
         const rowCount = this.rows++
 
         //console.log(size, this.start, this.rowSize, rowCount)
-        if (!Number.isInteger(rowCount)) throw 'non integer rowCount'
+        //if (!Number.isInteger(rowCount)) throw 'non integer rowCount'
         // fs.appendFileSync(this.path, buff, { encoding: 'binary' })
-        // this.emit(symbol, rowCount + 1)
         this.writeStream.write(buff, () => this.emit(symbol, rowCount + 1))
     }
     public async push(row: row) {
@@ -257,10 +257,19 @@ class Table extends EventEmitter {
                 }
                 resolve(out)
             })
-            this.add({
-                type: 'addRow',
-                data: Buffer.concat([newRow, Buffer.alloc(padding)]),
-                symbol,
+            //TODO redo all this. create a read stream that pipes directly into write stream
+            // this.add({
+            //     type: 'addRow',
+            //     data: Buffer.concat([newRow, Buffer.alloc(padding)]),
+            //     symbol,
+            // })
+            this.writeStream.write(Buffer.concat([newRow, Buffer.alloc(padding)]), () => {
+                const id = 1 + this.rows++
+                const out: { [key: string]: any } = { id }
+                for (let i = 0; i < row.length; i++) {
+                    out[this.columns[i][0]] = row[i]
+                }
+                resolve(out)
             })
         })
     }
@@ -336,10 +345,12 @@ class Table extends EventEmitter {
                     for (let i = 0; i < cols.length; i++) {
                         switch (cols[i][1]) {
                             case 'string':
-                                const str = chunk.toString(
-                                    'utf-8',
-                                    colOffset + rowOffset,
-                                    colOffset + rowOffset + cols[i][2]
+                                const str = cutNull(
+                                    chunk.toString(
+                                        'utf-8',
+                                        colOffset + rowOffset,
+                                        colOffset + rowOffset + cols[i][2]
+                                    )
                                 )
                                 out[cols[i][0]] = str
                                 colOffset += cols[i][2]
@@ -355,8 +366,13 @@ class Table extends EventEmitter {
                     }
 
                     if (options.where && options.where(out) === false) continue
-
-                    results.push(out)
+                    if (options.columns) {
+                        const newOut: { [key: string]: any } = {}
+                        options.columns.forEach(col => (newOut[col] = out[col]))
+                        results.push(newOut)
+                    } else {
+                        results.push(out)
+                    }
 
                     resultCount++
                     if (options.limit && resultCount >= options.limit) {
@@ -434,7 +450,7 @@ async function q() {
     slow(options.where, options.limit)
     //console.log('dat', dat)
 }
-q()
+//q()
 
 function randomString() {
     return Math.random().toString(36).slice(2, 7)
@@ -458,12 +474,20 @@ async function main2() {
         await books.push(['da vincis co', 'dan brown', 2004])
         // console.log('data', data)
         const dat = await books.read(1)
-        console.log('dat', dat)
+        console.time()
+        for (let i = 0; i < 60000; i++) {
+            let r = randomString()
+            await books.push([r, r, Math.floor(Math.random() * 1000000)])
+        }
+        console.timeEnd()
+        const all = await books.select({ columns: ['title', 'id'] })
+        // console.log('dat', dat)
+        // console.log('all', all)
     } catch (error) {
         console.log(error)
     }
 }
-// main2()
+main2()
 
 function slow(where, limit) {
     console.time('slow')

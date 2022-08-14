@@ -189,7 +189,7 @@ class Table extends EventEmitter {
                 // console.timeLog()
                 const out: { [key: string]: any } = { id }
                 for (let i = 0; i < row.length; i++) {
-                    out[this.columns[i][1]] = row[i]
+                    out[this.columns[i][0]] = row[i]
                 }
                 resolve(out)
             })
@@ -212,15 +212,16 @@ class Table extends EventEmitter {
             str.on('data', (chunk: Buffer) => {
                 let offset = 0
                 const out: { [key: string]: any } = { id }
-                for (let i = 0; i < this.columns?.length; i++) {
-                    switch (this.columns[i][1]) {
+                const cols = this.columns
+                for (let i = 0; i < cols?.length; i++) {
+                    switch (cols[i][1]) {
                         case 'string':
-                            out[this.columns[i][1]] = chunk.toString('utf8', offset, 8)
-                            offset += this.columns[i][2]
+                            out[cols[i][0]] = chunk.toString('utf8', offset, offset + cols[i][2])
+                            offset += cols[i][2]
                             break
                         case 'int':
-                            out[this.columns[i][1]] = chunk.readIntLE(offset, 4)
-                            offset += this.columns[i][2]
+                            out[cols[i][0]] = chunk.readIntLE(offset, cols[i][2])
+                            offset += cols[i][2]
                             break
 
                         default:
@@ -273,9 +274,26 @@ async function main() {
 
     console.timeLog()
 }
-main()
+//main()
 
 function randomString() {
     return Math.random().toString(36).slice(2, 7)
 }
 //console.log('cars', cars)
+
+const schema2: schema = [
+    //id is auto
+    ['title', 'string', 12],
+    ['author', 'string', 12],
+    ['released', 'int', 4], // or allow user to enter a max number and calc eg. 1_000_000 => 3 because 3 bye max over 1mil
+    //  atoms:['int',6],
+]
+
+async function main2() {
+    const books = new Table('samples/books.db', 'books', schema2)
+    const data = await books.push(['harry pott', 'jk rowlingS', 1998])
+    console.log('data', data)
+    const dat = await books.read(1)
+    console.log('dat', dat)
+}
+main2()

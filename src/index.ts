@@ -66,9 +66,7 @@ interface tableConfig {
 
 interface queryOptions {
     columns?: string[]
-    where?: {
-        [key: string]: (arg: number | string) => boolean
-    }
+    where?: (arg: { [key: string]: any }) => boolean
     limit?: number
     offset?: number
 }
@@ -313,9 +311,8 @@ class Table extends EventEmitter {
 
     public async select(options: queryOptions = {}) {
         return new Promise(async (resolve, reject) => {
-            console.log('starting')
             let resultCount = 0
-            const rowsPerChunk = 10
+            const rowsPerChunk = 10000 // Biggest effect on speed
             const streamConfig: ReadStreamOptions = {
                 start: this.start,
                 highWaterMark: this.rowSize * rowsPerChunk,
@@ -328,8 +325,9 @@ class Table extends EventEmitter {
             let results: any[] = []
             let chunkIndex = -1
             str.on('data', (chunk: Buffer) => {
+                const chunkRows = Math.floor(chunk.length / this.rowSize)
                 chunkIndex++
-                chunkLoop: for (let i = 0; i < rowsPerChunk; i++) {
+                for (let i = 0; i < chunkRows; i++) {
                     const rowOffset = i * this.rowSize
                     let colOffset = 0
                     const cols = this.columns
@@ -343,10 +341,6 @@ class Table extends EventEmitter {
                                     colOffset + rowOffset,
                                     colOffset + rowOffset + cols[i][2]
                                 )
-                                //checks where function
-                                const filter = options?.where?.[cols[i][0]]
-                                if (filter && filter(str) === false) continue chunkLoop
-
                                 out[cols[i][0]] = str
                                 colOffset += cols[i][2]
                                 break
@@ -359,6 +353,9 @@ class Table extends EventEmitter {
                                 break
                         }
                     }
+
+                    if (options.where && options.where(out) === false) continue
+
                     results.push(out)
 
                     resultCount++
@@ -390,7 +387,7 @@ const schema1: schema = [
 
 async function main() {
     const cars = new Table('samples/cars.db')
-    cars.createTable('cars', schema1, { overwrite: true })
+    cars.createTable('cars', schema1, { overwrite: false })
     const id = await cars.push(['foffo', 435])
     console.log('id', id)
 
@@ -426,15 +423,15 @@ async function q() {
     // books.createTable('books', schema2, { overwrite: true })
     await cars.getTable()
     console.time('ff')
-    const dat = await cars.select({
-        limit: 4,
-        where: {
-            model: (str: string) => str.includes('vv'),
-        },
-    })
+    const options = {
+        limit: 2,
+        where: row => row.model.includes('vv') && row.produced < 80000,
+    }
+    const dat = await cars.select(options)
     console.log('dat', dat)
 
     console.timeEnd('ff')
+    slow(options.where, options.limit)
     //console.log('dat', dat)
 }
 q()
@@ -467,3 +464,21 @@ async function main2() {
     }
 }
 // main2()
+
+function slow(where, limit) {
+    console.time('slow')
+    const data = fs.readFileSync('./samples/cars.json')
+    const arr = JSON.parse(data)
+    //const filtered = arr.filter(row => row.model.includes('vv') && row.produced < 80000)
+    const results = []
+    for (let i = 0; i < arr.length; i++) {
+        const row = arr[i]
+        if (where && where(row)) {
+            results.push(row)
+            if (limit && results.length > limit) break
+        }
+    }
+    //console.log('arr', results)
+    console.timeEnd('slow')
+}
+//slow()

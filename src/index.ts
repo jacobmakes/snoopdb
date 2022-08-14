@@ -257,19 +257,10 @@ class Table extends EventEmitter {
                 }
                 resolve(out)
             })
-            //TODO redo all this. create a read stream that pipes directly into write stream
-            // this.add({
-            //     type: 'addRow',
-            //     data: Buffer.concat([newRow, Buffer.alloc(padding)]),
-            //     symbol,
-            // })
-            this.writeStream.write(Buffer.concat([newRow, Buffer.alloc(padding)]), () => {
-                const id = 1 + this.rows++
-                const out: { [key: string]: any } = { id }
-                for (let i = 0; i < row.length; i++) {
-                    out[this.columns[i][0]] = row[i]
-                }
-                resolve(out)
+            this.add({
+                type: 'addRow',
+                data: Buffer.concat([newRow, Buffer.alloc(padding)]),
+                symbol,
             })
         })
     }

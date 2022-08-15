@@ -1,10 +1,9 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import * as stream from 'stream'
 import * as os from 'os'
 import { Buffer } from 'buffer'
 import { stringify } from 'querystring'
-import { EventEmitter } from 'stream'
+import { EventEmitter, Readable } from 'stream'
 import { resolve } from 'path'
 import { CreateReadStreamOptions } from 'fs/promises'
 import { ReadStreamOptions } from '../types'
@@ -180,17 +179,17 @@ class Table extends EventEmitter {
     }
     private process(newItem?: queueItem) {
         this.locked = true
-        //console.log('que', this.queue, newItem)
 
         if (newItem) this.queue.push(newItem)
-        //console.log('que2', this.queue)
         if (this.queue.length == 0) return
         const item = this.queue.shift()
         switch (item.type) {
             case 'addRow':
                 this.addRow(item)
                 break
-
+            case 'addMany':
+                this.addMany(item)
+                break
             default:
                 break
         }
@@ -199,54 +198,21 @@ class Table extends EventEmitter {
         this.locked = false
     }
     private addRow({ data: buff, symbol }: queueItem) {
-        //const { size } = fs.statSync(this.path)
-        //const rowCount = (size - this.start) / this.rowSize
         const rowCount = this.rows++
-
-        //console.log(size, this.start, this.rowSize, rowCount)
-        //if (!Number.isInteger(rowCount)) throw 'non integer rowCount'
-        // fs.appendFileSync(this.path, buff, { encoding: 'binary' })
         this.writeStream.write(buff, () => this.emit(symbol, rowCount + 1))
+    }
+    private addMany({ data: buff, symbol }: queueItem) {
+        const initRowCount = this.rows
+        const rowAddCount = buff?.length / this.rowSize
+        this.rows += rowAddCount
+        this.writeStream.write(buff, () =>
+            this.emit(symbol, { startId: initRowCount + 1, added: rowAddCount })
+        )
     }
     public async push(row: row) {
         //check size matches
         return new Promise(async (resolve, reject) => {
-            if (row.length !== this.columns?.length) {
-                throw 'row.length must match schema.length. row:' + row
-            }
-            const buffers: Buffer[] = []
-
-            for (let i = 0; i < row.length; i++) {
-                //check val correct size
-                let buff: Buffer
-                switch (this.columns[i][1]) {
-                    case 'string':
-                        //@ts-ignore
-                        const stringBuff = Buffer.from(row[i])
-                        if (stringBuff.length > this.columns[i][2]) {
-                            throw 'row.length must match schema.length'
-                        }
-                        buff = Buffer.alloc(this.columns[i][2])
-                        stringBuff.copy(buff)
-                        break
-                    case 'int':
-                        if (!Number.isInteger(row[i])) throw 'non integer value: ' + row[i]
-                        buff = Buffer.allocUnsafe(this.columns[i][2])
-                        //@ts-ignore
-                        buff.writeIntLE(row[i], 0, this.columns[i][2])
-                        break
-                    default:
-                        console.error(this.columns[i][1])
-                        throw 'no type match found'
-                }
-                buffers.push(buff)
-            }
-            const newRow = Buffer.concat(buffers)
-            const padding = this.rowSize - newRow.length
-            //final reduntant check
-            if (padding < 0) {
-                throw 'row too large'
-            }
+            const rowBuffer = this.makeRowBuffer(row)
             const symbol = Symbol()
             this.once(symbol, id => {
                 // console.log('listening', id)
@@ -259,10 +225,96 @@ class Table extends EventEmitter {
             })
             this.add({
                 type: 'addRow',
-                data: Buffer.concat([newRow, Buffer.alloc(padding)]),
+                data: rowBuffer,
                 symbol,
             })
         })
+    }
+    public async pushMany(rows: row[]) {
+        //check size matches
+        return new Promise(async (resolve, reject) => {
+            const readable = new Readable({
+                read(size) {
+                    console.log('size', size)
+                },
+            })
+            for (const row of rows) {
+                readable.push(this.makeRowBuffer(row))
+            }
+            readable.on('data', chunk => {
+                //console.log('ff', chunk.toString())
+            })
+            readable.pipe(this.writeStream)
+            resolve('done')
+
+            // this.writeStream.write(buff, () => this.emit(symbol, rowCount + 1))
+            // const symbol = Symbol()
+            // this.once(symbol, result => {
+            //     resolve(result)
+            // })
+            // this.add({
+            //     type: 'addMany',
+            //     data: Buffer.concat(rowsBuffer),
+            //     symbol,
+            // })
+        })
+    }
+    public async pushVeryMany(rows: row[]) {
+        //check size matches
+        return new Promise(async (resolve, reject) => {
+            const rowsBuffer: Buffer[] = []
+            for (const row of rows) {
+                rowsBuffer.push(this.makeRowBuffer(row))
+            }
+            const symbol = Symbol()
+            this.once(symbol, result => {
+                resolve(result)
+            })
+            this.add({
+                type: 'addMany',
+                data: Buffer.concat(rowsBuffer),
+                symbol,
+            })
+        })
+    }
+    private makeRowBuffer(row: row) {
+        if (row.length !== this.columns?.length) {
+            throw 'row.length must match schema.length. row:' + row
+        }
+        const buffers: Buffer[] = []
+
+        for (let i = 0; i < row.length; i++) {
+            //check val correct size
+            let buff: Buffer
+            switch (this.columns[i][1]) {
+                case 'string':
+                    //@ts-ignore
+                    const stringBuff = Buffer.from(row[i])
+                    if (stringBuff.length > this.columns[i][2]) {
+                        throw 'row.length must match schema.length'
+                    }
+                    buff = Buffer.alloc(this.columns[i][2])
+                    stringBuff.copy(buff)
+                    break
+                case 'int':
+                    if (!Number.isInteger(row[i])) throw 'non integer value: ' + row[i]
+                    buff = Buffer.allocUnsafe(this.columns[i][2])
+                    //@ts-ignore
+                    buff.writeIntLE(row[i], 0, this.columns[i][2])
+                    break
+                default:
+                    console.error(this.columns[i][1])
+                    throw 'no type match found'
+            }
+            buffers.push(buff)
+        }
+        const newRow = Buffer.concat(buffers)
+        const padding = this.rowSize - newRow.length
+        //final redundant check
+        if (padding < 0) {
+            throw 'row too large'
+        }
+        return Buffer.concat([newRow, Buffer.alloc(padding)])
     }
     public async read(id: number) {
         return new Promise(async (resolve, reject) => {
@@ -450,7 +502,7 @@ function randomString() {
 
 const schema2: schema = [
     //id is auto
-    ['title', 'string', 12],
+    ['title', 'string', 20],
     ['author', 'string', 12],
     ['released', 'int', 4], // or allow user to enter a max number and calc eg. 1_000_000 => 3 because 3 bye max over 1mil
     //  atoms:['int',6],
@@ -461,17 +513,36 @@ async function main2() {
         const books = new Table('samples/books.db')
         books.createTable('books', schema2, { overwrite: true })
         // await books.getTable()
+        const stats = await books.pushMany([
+            ['mole diary', 'anne', 1982],
+            ['scouting for gi', 'baden', 1943],
+        ])
         const data = await books.push(['harry potter', 'jk rowling', 1998])
+        const stats2 = await books.pushMany([
+            ['mole diary', 'anne', 1982],
+            ['scouting for gi', 'baden', 1943],
+        ])
+        console.log('data', data)
+        console.log('stats', stats2)
+
         await books.push(['da vincis co', 'dan brown', 2004])
         // console.log('data', data)
         const dat = await books.read(1)
-        console.time()
-        for (let i = 0; i < 60000; i++) {
+        // console.time('push')
+        // for (let i = 0; i < 6000000; i++) {
+        //     let r = randomString()
+        //     await books.push([r, r, Math.floor(Math.random() * 1000000)])
+        // }
+        // console.timeEnd('push')
+        console.time('pushMany')
+        const arr = []
+        for (let i = 0; i < 6000000; i++) {
             let r = randomString()
-            await books.push([r, r, Math.floor(Math.random() * 1000000)])
+            arr.push([r, r, Math.floor(Math.random() * 1000000)])
         }
-        console.timeEnd()
-        const all = await books.select({ columns: ['title', 'id'] })
+        books.pushMany(arr)
+        console.timeEnd('pushMany')
+        const all = await books.select()
         // console.log('dat', dat)
         // console.log('all', all)
     } catch (error) {

@@ -233,35 +233,6 @@ class Table extends EventEmitter {
     public async pushMany(rows: row[]) {
         //check size matches
         return new Promise(async (resolve, reject) => {
-            const readable = new Readable({
-                read(size) {
-                    console.log('size', size)
-                },
-            })
-            for (const row of rows) {
-                readable.push(this.makeRowBuffer(row))
-            }
-            readable.on('data', chunk => {
-                //console.log('ff', chunk.toString())
-            })
-            readable.pipe(this.writeStream)
-            resolve('done')
-
-            // this.writeStream.write(buff, () => this.emit(symbol, rowCount + 1))
-            // const symbol = Symbol()
-            // this.once(symbol, result => {
-            //     resolve(result)
-            // })
-            // this.add({
-            //     type: 'addMany',
-            //     data: Buffer.concat(rowsBuffer),
-            //     symbol,
-            // })
-        })
-    }
-    public async pushVeryMany(rows: row[]) {
-        //check size matches
-        return new Promise(async (resolve, reject) => {
             const rowsBuffer: Buffer[] = []
             for (const row of rows) {
                 rowsBuffer.push(this.makeRowBuffer(row))
@@ -365,8 +336,9 @@ class Table extends EventEmitter {
         return new Promise(async (resolve, reject) => {
             let resultCount = 0
             const rowsPerChunk = 10000 // Biggest effect on speed
+            const skip = options.offset ? options.offset : 0
             const streamConfig: ReadStreamOptions = {
-                start: this.start,
+                start: this.start + skip * this.rowSize,
                 highWaterMark: this.rowSize * rowsPerChunk,
             }
             // if (options.limit) {
@@ -383,7 +355,9 @@ class Table extends EventEmitter {
                     const rowOffset = i * this.rowSize
                     let colOffset = 0
                     const cols = this.columns
-                    const out: { [key: string]: any } = { id: chunkIndex * rowsPerChunk + i + 1 }
+                    const out: { [key: string]: any } = {
+                        id: chunkIndex * rowsPerChunk + i + 1 + skip,
+                    }
 
                     for (let i = 0; i < cols.length; i++) {
                         switch (cols[i][1]) {
@@ -482,9 +456,10 @@ async function q() {
     // books.createTable('books', schema2, { overwrite: true })
     await cars.getTable()
     console.time('ff')
-    const options = {
-        limit: 2,
-        where: row => row.model.includes('vv') && row.produced < 80000,
+    const options: queryOptions = {
+        limit: 7,
+        offset: 42656,
+        where: row => row.model.includes('vv') && row.produced < 80000000,
     }
     const dat = await cars.select(options)
     console.log('dat', dat)
@@ -493,7 +468,7 @@ async function q() {
     slow(options.where, options.limit)
     //console.log('dat', dat)
 }
-//q()
+q()
 
 function randomString() {
     return Math.random().toString(36).slice(2, 7)
@@ -536,7 +511,7 @@ async function main2() {
         // console.timeEnd('push')
         console.time('pushMany')
         const arr = []
-        for (let i = 0; i < 6000000; i++) {
+        for (let i = 0; i < 60000; i++) {
             let r = randomString()
             arr.push([r, r, Math.floor(Math.random() * 1000000)])
         }
@@ -549,7 +524,7 @@ async function main2() {
         console.log(error)
     }
 }
-main2()
+//main2()
 
 function slow(where, limit) {
     console.time('slow')

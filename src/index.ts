@@ -52,34 +52,36 @@ const colTypes = ['string', 'int']
 
 type column = [string, string, number]
 
-type schema = column[]
+export type schema = column[]
 type row = (string | number)[]
 interface queueItem {
     type: string
-    data?: Buffer
-    symbol?: Symbol
+    data: Buffer
+    symbol: symbol
 }
 interface tableConfig {
     overwrite?: boolean
 }
-
+type obj = { [key: string]: any }
 interface queryOptions {
     columns?: string[]
-    where?: (arg: { [key: string]: any }) => boolean
+    where?: (arg: obj) => boolean
+    transform?: (arg: obj) => any
     limit?: number
     offset?: number
 }
 
-class Table extends EventEmitter {
-    private name: string
-    private columns: schema
+export class Table extends EventEmitter {
+    private name!: string
+    private columns!: schema
     private config: any
-    protected start: number
-    protected rowSize: number
+    protected start!: number
+    protected rowSize!: number
     private queue: queueItem[]
+    private indexes: Indexes = {}
     private locked: boolean
     private writeStream
-    private rows: number
+    private rows!: number
 
     constructor(readonly path: string) {
         super()
@@ -93,6 +95,7 @@ class Table extends EventEmitter {
         this.name = name
         this.columns = columns
         this.config = config
+        this.indexes = {}
         //create table
         /* Table form bytes, reason */
         // 4 location data starts
@@ -103,11 +106,14 @@ class Table extends EventEmitter {
         if (!columns) {
             throw 'Table Schema undefined'
         }
+        const colNames: string[] = []
         columns.forEach(col => {
+            colNames.push(col[0])
             if (!colTypes.includes(col[1])) {
                 throw `invalid type ${col[1]} acceptable types: ${colTypes.join('","')}`
             }
         })
+        if (colNames.length != new Set(colNames).size) throw 'column names must be unique'
 
         const schemaLength = Buffer.from(JSON.stringify(columns)).length
         const START = schemaLength + 12 // + add options hedaers to size
@@ -182,7 +188,7 @@ class Table extends EventEmitter {
 
         if (newItem) this.queue.push(newItem)
         if (this.queue.length == 0) return
-        const item = this.queue.shift()
+        const item = this.queue.shift()!
         switch (item.type) {
             case 'addRow':
                 this.addRow(item)
@@ -217,7 +223,7 @@ class Table extends EventEmitter {
             this.once(symbol, id => {
                 // console.log('listening', id)
                 // console.timeLog()
-                const out: { [key: string]: any } = { id }
+                const out: obj = { id }
                 for (let i = 0; i < row.length; i++) {
                     out[this.columns[i][0]] = row[i]
                 }
@@ -297,7 +303,7 @@ class Table extends EventEmitter {
             })
             str.on('data', (chunk: Buffer) => {
                 let offset = 0
-                const out: { [key: string]: any } = { id }
+                const out: obj = { id }
                 const cols = this.columns
                 for (let i = 0; i < cols?.length; i++) {
                     switch (cols[i][1]) {
@@ -333,6 +339,8 @@ class Table extends EventEmitter {
     }
 
     public async select(options: queryOptions = {}) {
+        if (options.transform && options.columns)
+            throw 'cannot use options transform and columns together. pick one'
         return new Promise(async (resolve, reject) => {
             let resultCount = 0
             const rowsPerChunk = 10000 // Biggest effect on speed
@@ -355,7 +363,7 @@ class Table extends EventEmitter {
                     const rowOffset = i * this.rowSize
                     let colOffset = 0
                     const cols = this.columns
-                    const out: { [key: string]: any } = {
+                    let out: obj = {
                         id: chunkIndex * rowsPerChunk + i + 1 + skip,
                     }
 
@@ -384,12 +392,16 @@ class Table extends EventEmitter {
 
                     if (options.where && options.where(out) === false) continue
                     if (options.columns) {
-                        const newOut: { [key: string]: any } = {}
-                        options.columns.forEach(col => (newOut[col] = out[col]))
-                        results.push(newOut)
-                    } else {
-                        results.push(out)
+                        this.columns.forEach(col => {
+                            if (!options.columns?.includes(col[0])) {
+                                delete out[col[0]]
+                            }
+                        })
                     }
+                    if (options.transform) {
+                        out = options.transform(out)
+                    }
+                    results.push(out)
 
                     resultCount++
                     if (options.limit && resultCount >= options.limit) {
@@ -408,138 +420,62 @@ class Table extends EventEmitter {
             })
         })
     }
-}
-
-//cars
-const schema1: schema = [
-    //id is auto
-    ['model', 'string', 8],
-    ['produced', 'int', 4], // or allow user to enter a max number and calc eg. 1_000_000 => 3 because 3 bye max over 1mil
-    //  atoms:['int',6],
-]
-
-async function main() {
-    const cars = new Table('samples/cars.db')
-    cars.createTable('cars', schema1, { overwrite: false })
-    const id = await cars.push(['foffo', 435])
-    console.log('id', id)
-
-    const id2 = await cars.push(['vvvolo', 1234556])
-    await cars.push(['foggy', 12334556])
-    await cars.push(['👵🏽', 35])
-    await cars.push(['b', 43])
-    await cars.push(['triumpth', 380])
-    console.log('id2', id2)
-    for (let i = 0; i < 600000; i++) {
-        let r = randomString()
-        await cars.push([r, Math.floor(Math.random() * 1000000)])
-    }
-    console.timeEnd()
-    console.time()
-    const dat = await cars.read(22)
-    console.log('dat', dat)
-
-    console.timeLog()
-}
-//main()
-
-async function read() {
-    const cars = new Table('samples/cars.db') //6million
-    // books.createTable('books', schema2, { overwrite: true })
-    await cars.getTable()
-    console.log(await cars.getRowCount())
-    console.log('dat', await cars.read(8195))
-}
-//read()
-async function q() {
-    const cars = new Table('samples/cars.db') //6million
-    // books.createTable('books', schema2, { overwrite: true })
-    await cars.getTable()
-    console.time('ff')
-    const options: queryOptions = {
-        limit: 7,
-        offset: 42656,
-        where: row => row.model.includes('vv') && row.produced < 80000000,
-    }
-    const dat = await cars.select(options)
-    console.log('dat', dat)
-
-    console.timeEnd('ff')
-    slow(options.where, options.limit)
-    //console.log('dat', dat)
-}
-q()
-
-function randomString() {
-    return Math.random().toString(36).slice(2, 7)
-}
-//console.log('cars', cars)
-
-const schema2: schema = [
-    //id is auto
-    ['title', 'string', 20],
-    ['author', 'string', 12],
-    ['released', 'int', 4], // or allow user to enter a max number and calc eg. 1_000_000 => 3 because 3 bye max over 1mil
-    //  atoms:['int',6],
-]
-
-async function main2() {
-    try {
-        const books = new Table('samples/books.db')
-        books.createTable('books', schema2, { overwrite: true })
-        // await books.getTable()
-        const stats = await books.pushMany([
-            ['mole diary', 'anne', 1982],
-            ['scouting for gi', 'baden', 1943],
-        ])
-        const data = await books.push(['harry potter', 'jk rowling', 1998])
-        const stats2 = await books.pushMany([
-            ['mole diary', 'anne', 1982],
-            ['scouting for gi', 'baden', 1943],
-        ])
-        console.log('data', data)
-        console.log('stats', stats2)
-
-        await books.push(['da vincis co', 'dan brown', 2004])
-        // console.log('data', data)
-        const dat = await books.read(1)
-        // console.time('push')
-        // for (let i = 0; i < 6000000; i++) {
-        //     let r = randomString()
-        //     await books.push([r, r, Math.floor(Math.random() * 1000000)])
-        // }
-        // console.timeEnd('push')
-        console.time('pushMany')
-        const arr = []
-        for (let i = 0; i < 60000; i++) {
-            let r = randomString()
-            arr.push([r, r, Math.floor(Math.random() * 1000000)])
+    indexList() {
+        const out: obj = {}
+        for (const [key, value] of Object.entries(this.indexes)) {
+            console.log(`${key}: ${value}`)
+            out[key] = Object.keys(value)
         }
-        books.pushMany(arr)
-        console.timeEnd('pushMany')
-        const all = await books.select()
-        // console.log('dat', dat)
-        // console.log('all', all)
-    } catch (error) {
-        console.log(error)
+        return out
     }
-}
-//main2()
+    private async createHash(colName: string, fast = false): Promise<HashIndex | FastHashIndex> {
+        return new Promise(async (resolve, reject) => {
+            const hash: obj = {}
+            await this.select({
+                transform: row => {
+                    const key = row[colName]
+                    if (!hash[key]) {
+                        hash[key] = []
+                    }
+                    hash[key].push(fast ? row : row.id)
+                },
+            })
+            resolve(hash)
+        })
+    }
+    async hashIndex(colName: string) {
+        return new Promise(async (resolve, reject) => {
+            const freshHash = await this.createHash(colName)
+            this.indexes[colName] ??= {}
+            this.indexes[colName]['hash'] = freshHash
+            console.log('this.indexes', this.indexes)
+            console.log('this.indexes', this.indexes)
 
-function slow(where, limit) {
-    console.time('slow')
-    const data = fs.readFileSync('./samples/cars.json')
-    const arr = JSON.parse(data)
-    //const filtered = arr.filter(row => row.model.includes('vv') && row.produced < 80000)
-    const results = []
-    for (let i = 0; i < arr.length; i++) {
-        const row = arr[i]
-        if (where && where(row)) {
-            results.push(row)
-            if (limit && results.length > limit) break
-        }
+            // if (!this.indexes?.[colName]?.['hash']) {
+            //     this.indexes[colName]['hash'] = []
+            // }
+            resolve(true)
+        })
     }
-    //console.log('arr', results)
-    console.timeEnd('slow')
+    async hashFind<T extends string | number>(colName: string, lookup: T) {
+        return new Promise(async (resolve, reject) => {
+            const hash = this.indexes[colName].hash
+            const ids: number[] = hash[lookup + '']
+            const rows = await Promise.all(ids.map(async id => await this.read(id)))
+            console.log('rows', rows)
+        })
+    }
 }
-//slow()
+
+type indexTypes = 'hash' | 'tree' | 'fastHash'
+interface Indexes {
+    [columnName: string]: { [key in indexTypes]?: HashIndex | treeIndex }
+}
+interface HashIndex {
+    [key: string]: number[]
+}
+interface FastHashIndex {
+    [key: string]: any
+}
+interface treeIndex {}
+//export default Table

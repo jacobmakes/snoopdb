@@ -1,7 +1,7 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import * as stream from 'stream';
-import { Buffer } from 'buffer';
+import * as fs from 'fs'
+import * as path from 'path'
+import * as stream from 'stream'
+import { Buffer } from 'buffer'
 
 // const fileStream= fs.createReadStream("small.txt",{encoding:'binary'});
 // const writeStream= fs.createWriteStream("smallt.txt",{encoding:'binary'});
@@ -14,16 +14,16 @@ import { Buffer } from 'buffer';
 
 // fileStream.pipe(writeStream);
 // const buff0 =Buffer.from('ff👵🏽👵🏽👵ñ')
-const buff0 =Buffer.allocUnsafe(4) //being overwritten so is fine
-buff0.writeInt32LE(Number.MAX_SAFE_INTEGER-1)
-console.log(buff0.length,buff0)
+const buff0 = Buffer.allocUnsafe(4) //being overwritten so is fine
+buff0.writeInt32LE(Number.MAX_SAFE_INTEGER - 1)
+console.log(buff0.length, buff0)
 // const buff1 =Buffer.from('ff👵🏽👵🏽👵ñ')
 // const buff2 =Buffer.from([121, 104,119])
 // const row = Buffer.concat([buff1,blank,buff2])
 // const padding = Buffer.alloc(100-row.length)
 // wstream.write(Buffer.concat([row,padding]));
 
-let i =200000
+let i = 200000
 // var wstream = fs.createWriteStream('myBinaryFile',{encoding:'utf8',flags:'a'});
 // while(i>0){
 // // // creates random Buffer of 100 bytes
@@ -52,14 +52,8 @@ let i =200000
 // // const f=fs.readFileSync('myBinaryFile',{encoding:'utf8'}) //C
 // // console.log(f.substring(200000,200099)); console.timeEnd() //C 885.356ms
 
-
-const STRING ='ff👵🏽👵🏽👵ñ'
-const encodings:BufferEncoding[] =['utf8',
-'ucs2',
-'utf16le',
-'ascii',
-'binary',
-'hex']
+const STRING = 'ff👵🏽👵🏽👵ñ'
+const encodings: BufferEncoding[] = ['utf8', 'ucs2', 'utf16le', 'ascii', 'binary', 'hex']
 
 // encodings.forEach((enc)=>{
 //     const fileStream= fs.createReadStream('moji',{encoding:'utf-8'});
@@ -80,7 +74,7 @@ const encodings:BufferEncoding[] =['utf8',
 //     //start:2
 // })
 
-// read.on('data',chunk=>{ 
+// read.on('data',chunk=>{
 //     console.log('chunk',chunk.length);
 //     const word = chunk.toString('binary')
 //     console.log('word',word);

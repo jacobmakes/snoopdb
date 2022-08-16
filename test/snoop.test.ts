@@ -30,8 +30,9 @@ describe('main suite', () => {
             trains.createTable(
                 'noobs',
                 [
+                    ['id', 'ints', 4],
                     ['wheels', 'ints', 4],
-                    ['wheeels', 'string', 8],
+                    ['wheels', 'string', 8],
                 ],
                 { overwrite: false }
             )

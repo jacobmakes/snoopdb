@@ -10,3 +10,6 @@ Limted queries
 this can read from the start of the file and stop when needed allowing much faster queries or it can start from a certain id offset for faster queries
 
 implementing a column indexing feature would also be useful albiet probably end up being not much faster except occasionly
+
+TODO:
+count function and possibly unique function

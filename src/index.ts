@@ -106,8 +106,10 @@ export class Table extends EventEmitter {
         if (!columns) {
             throw 'Table Schema undefined'
         }
+
         const colNames: string[] = []
         columns.forEach(col => {
+            if (col[0] === 'id') throw 'cannot name column "id"'
             colNames.push(col[0])
             if (!colTypes.includes(col[1])) {
                 throw `invalid type ${col[1]} acceptable types: ${colTypes.join('","')}`
@@ -302,6 +304,7 @@ export class Table extends EventEmitter {
                 highWaterMark: this.rowSize + 1,
             })
             str.on('data', (chunk: Buffer) => {
+                str.close()
                 let offset = 0
                 const out: obj = { id }
                 const cols = this.columns
@@ -423,7 +426,6 @@ export class Table extends EventEmitter {
     indexList() {
         const out: obj = {}
         for (const [key, value] of Object.entries(this.indexes)) {
-            console.log(`${key}: ${value}`)
             out[key] = Object.keys(value)
         }
         return out
@@ -440,29 +442,57 @@ export class Table extends EventEmitter {
                     hash[key].push(fast ? row : row.id)
                 },
             })
+            this.indexes[colName] ??= {}
+            this.indexes[colName][fast ? 'fastHash' : 'hash'] = hash
             resolve(hash)
         })
     }
     async hashIndex(colName: string) {
-        return new Promise(async (resolve, reject) => {
-            const freshHash = await this.createHash(colName)
-            this.indexes[colName] ??= {}
-            this.indexes[colName]['hash'] = freshHash
-            console.log('this.indexes', this.indexes)
-            console.log('this.indexes', this.indexes)
-
-            // if (!this.indexes?.[colName]?.['hash']) {
-            //     this.indexes[colName]['hash'] = []
-            // }
-            resolve(true)
-        })
+        return this.createHash(colName)
     }
-    async hashFind<T extends string | number>(colName: string, lookup: T) {
+    async hashIndexFast(colName: string) {
+        return this.createHash(colName, true)
+    }
+    async hashFind<T extends string | number>(
+        colName: string,
+        lookup: T,
+        options: { MAX_READS?: number } = {}
+    ): Promise<any[]> {
         return new Promise(async (resolve, reject) => {
             const hash = this.indexes[colName].hash
             const ids: number[] = hash[lookup + '']
-            const rows = await Promise.all(ids.map(async id => await this.read(id)))
-            console.log('rows', rows)
+
+            //faster but limit problem 158.363ms
+            // const rows = await Promise.all(ids.map(async id => await this.read(id)))
+
+            //slowest and safest 330.258ms, slower than select all
+            // const rows = []
+            // for await (let id of ids) {
+            //     rows.push(await this.read(id))
+            // }
+
+            //good middle ground 157.227ms
+            const MAX_CHUNK = options.MAX_READS || 1000
+            var a = ids,
+                chunk
+            const split = []
+            while (a.length > 0) {
+                chunk = a.splice(0, MAX_CHUNK)
+                split.push(chunk)
+            }
+            const rows = []
+            for await (let chunk of split) {
+                rows.push(await Promise.all(chunk.map(async id => await this.read(id))))
+            }
+
+            // console.log('rows', rows)
+            resolve(rows)
+        })
+    }
+    async hashFindFast<T extends string | number>(colName: string, lookup: T): Promise<any[]> {
+        return new Promise(async (resolve, reject) => {
+            const hash = this.indexes[colName].fastHash[lookup + '']
+            resolve(hash)
         })
     }
 }

@@ -13,3 +13,29 @@ implementing a column indexing feature would also be useful albiet probably end 
 
 TODO:
 count function and possibly unique function
+
+hashFind vs hashFindFast
+hashFind creates an object with an array of ids it stores in memory eg:
+
+```
+interface HashIndex {
+    [key: string]: number[]
+}
+```
+
+each time it does a find it looks up every id individually using the getRow. This means this function is best used when the index groups data into small amounts, with each key ideally having less than 0.1% of the data.
+this is about 10 times faster than reading the entire file
+
+hashFindFast fast stores the entire file in memory but with a hash index. It's 100 times faster than above function and I would reccomend using it unless you're going to exceed your computers memory. Then it's probably better to use a real db.
+
+If you use multikey/multiple indexes (not implemented) this may be faster in some cases
+
+```
+interface FastHashIndex {
+    [key: string]: any
+}
+```
+
+These indexes DO NOT change when the database is updated or written to so you must call hashIndex() or hashIndexFast() to reindex manually. Again the use case for this database is high reads and a smallor zero number of writes
+
+rename transform to map

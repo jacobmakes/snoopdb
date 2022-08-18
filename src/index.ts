@@ -60,10 +60,10 @@ interface queueItem {
     symbol: symbol
 }
 interface tableConfig {
-    overwrite?: boolean
+    ifExists?: 'overwrite' | 'read' | 'error'
 }
 type obj = { [key: string]: any }
-interface queryOptions {
+export interface queryOptions {
     columns?: string[]
     where?: (arg: obj) => boolean
     transform?: (arg: obj) => any
@@ -72,6 +72,7 @@ interface queryOptions {
 }
 
 export class Table extends EventEmitter {
+    private initialized: boolean
     private name!: string
     private columns!: schema
     private config: any
@@ -80,71 +81,94 @@ export class Table extends EventEmitter {
     private queue: queueItem[]
     private indexes: Indexes = {}
     private locked: boolean
-    private writeStream
+    private writeStream!: fs.WriteStream
     private rows!: number
 
     constructor(readonly path: string) {
         super()
+        this.initialized = false
         this.queue = []
         this.locked = false
-        this.writeStream = fs.createWriteStream(this.path, { encoding: 'binary', flags: 'a' })
     }
-    public createTable(name: string, columns: schema, config?: tableConfig) {
-        if (fs.existsSync(this.path) && config?.overwrite !== true)
-            throw 'table already exists set config.overwrite to true to overwrite'
-        this.name = name
-        this.columns = columns
-        this.config = config
-        this.indexes = {}
-        //create table
-        /* Table form bytes, reason */
-        // 4 location data starts
-        // 4 version number'
-        // 4 schemaEnd
-        // ? schema
-        // ? other
-        if (!columns) {
-            throw 'Table Schema undefined'
+    private checkInit() {
+        if (!this.initialized) {
+            throw 'table not yet created. use createTable() or getTable()'
         }
+    }
 
-        const colNames: string[] = []
-        columns.forEach(col => {
-            if (col[0] === 'id') throw 'cannot name column "id"'
-            colNames.push(col[0])
-            if (!colTypes.includes(col[1])) {
-                throw `invalid type ${col[1]} acceptable types: ${colTypes.join('","')}`
+    public async createTable(name: string, columns: schema, config?: tableConfig) {
+        if (fs.existsSync(this.path)) {
+            if (config?.ifExists === 'read') {
+                if (this.initialized) return
+                await this.getTable()
+                return
+            } else if (config?.ifExists !== 'overwrite') {
+                throw 'table already exists set config.ifExists to get or overwrite'
             }
-        })
-        if (colNames.length != new Set(colNames).size) throw 'column names must be unique'
+        }
+        return new Promise((resolve, reject) => {
+            this.name = name
+            this.columns = columns
+            this.config = config
+            this.indexes = {}
+            //create table
+            /* Table form bytes, reason */
+            // 4 location data starts
+            // 4 version number'
+            // 4 schemaEnd
+            // ? schema
+            // ? other
+            if (!columns) {
+                return reject('Table Schema undefined')
+            }
+            this.writeStream = fs.createWriteStream(this.path, { encoding: 'binary', flags: 'a' })
+            this.writeStream.on('open', () => {
+                const colNames: string[] = []
+                columns.forEach(col => {
+                    if (col[0] === 'id') return reject('cannot name column "id"')
+                    colNames.push(col[0])
+                    if (!colTypes.includes(col[1])) {
+                        return reject(
+                            `invalid type ${col[1]} acceptable types: ${colTypes.join('","')}`
+                        )
+                    }
+                })
+                if (colNames.length !== new Set(colNames).size)
+                    return reject('column names must be unique')
 
-        const schemaLength = Buffer.from(JSON.stringify(columns)).length
-        const START = schemaLength + 12 // + add options hedaers to size
-        const VERSION = 1
-        const SCHEMA_END = schemaLength + 12
-        const headers = Buffer.alloc(START)
-        headers.writeInt32LE(START)
-        headers.writeInt32LE(VERSION, 4)
-        headers.writeInt32LE(SCHEMA_END, 8)
-        headers.write(JSON.stringify(columns), 12)
-        // const wstream = fs.createWriteStream(this.path, { encoding: 'binary' })
-        // wstream.write(headers, () =>
-        // )
-        // wstream.end()
-        fs.writeFileSync(this.path, headers, { encoding: 'binary' })
-        // readBinary(this.path, {
-        //     start: 12,
-        //     end: SCHEMA_END - 1,
-        // })
-        this.start = START
-        console.log(headers)
-        //@ts-ignore
-        this.rowSize = calculateRowSize(this.columns)
-        this.rows = 0
-        console.log('created table')
+                const schemaLength = Buffer.from(JSON.stringify(columns)).length
+                const START = schemaLength + 12 // + add options hedaers to size
+                const VERSION = 1
+                const SCHEMA_END = schemaLength + 12
+                const headers = Buffer.alloc(START)
+                headers.writeInt32LE(START)
+                headers.writeInt32LE(VERSION, 4)
+                headers.writeInt32LE(SCHEMA_END, 8)
+                headers.write(JSON.stringify(columns), 12)
+                // const wstream = fs.createWriteStream(this.path, { encoding: 'binary' })
+                // wstream.write(headers, () =>
+                // )
+                // wstream.end()
+                fs.writeFileSync(this.path, headers, { encoding: 'binary' })
+                // readBinary(this.path, {
+                //     start: 12,
+                //     end: SCHEMA_END - 1,
+                // })
+                this.start = START
+                console.log(headers)
+                //@ts-ignore
+                this.rowSize = calculateRowSize(this.columns)
+                this.rows = 0
+                console.log('created table')
+                this.initialized = true
+                return resolve(true)
+            })
+        })
     }
     public async getTable() {
         //check if table exists
         if (!fs.existsSync(this.path)) throw 'table does not exist'
+        if (this.initialized) throw 'table already initialized'
 
         return new Promise((resolve, reject) => {
             console.log('this.path', this.path)
@@ -165,21 +189,31 @@ export class Table extends EventEmitter {
                     const cols = JSON.parse(chunk.toString())
                     this.columns = cols
                     this.rowSize = calculateRowSize(this.columns)
-                    const { size } = fs.statSync(this.path)
-                    const rowCount = (size - this.start) / this.rowSize
-                    if (!Number.isInteger(rowCount)) throw 'non integer rowCount'
-                    this.rows = rowCount
-                    resolve(cols)
+                    fs.stat(this.path, (error, stat) => {
+                        if (error) reject(error)
+                        const { size } = stat
+                        const rowCount = (size - this.start) / this.rowSize
+                        if (!Number.isInteger(rowCount)) reject('non integer rowCount')
+                        this.rows = rowCount
+                        readMeta.close()
+                        readSchema.close()
+                        this.writeStream = fs.createWriteStream(this.path, {
+                            encoding: 'binary',
+                            flags: 'a',
+                        })
+                        this.writeStream.on('open', () => {
+                            this.initialized = true
+                            resolve(cols)
+                        })
+                    })
                 })
             })
         })
     }
     public async getRowCount() {
-        return new Promise(async res =>
-            res(((await fs.promises.stat(this.path)).size - this.start) / this.rowSize)
-        )
+        return ((await fs.promises.stat(this.path)).size - this.start) / this.rowSize
     }
-    public async getRowCountSync() {
+    public getRowCountSync() {
         return (fs.statSync(this.path).size - this.start) / this.rowSize
     }
     private add(item: queueItem) {
@@ -218,8 +252,8 @@ export class Table extends EventEmitter {
         )
     }
     public async push(row: row) {
-        //check size matches
-        return new Promise(async (resolve, reject) => {
+        this.checkInit()
+        return new Promise((resolve, reject) => {
             const rowBuffer = this.makeRowBuffer(row)
             const symbol = Symbol()
             this.once(symbol, id => {
@@ -239,7 +273,7 @@ export class Table extends EventEmitter {
         })
     }
     public async pushMany(rows: row[]) {
-        //check size matches
+        this.checkInit()
         return new Promise(async (resolve, reject) => {
             const rowsBuffer: Buffer[] = []
             for (const row of rows) {
@@ -295,8 +329,8 @@ export class Table extends EventEmitter {
         }
         return Buffer.concat([newRow, Buffer.alloc(padding)])
     }
-    public async read(id: number) {
-        return new Promise(async (resolve, reject) => {
+    public async getRow(id: number) {
+        return new Promise((resolve, reject) => {
             const offset = (id - 1) * this.rowSize + this.start
             const str = fs.createReadStream(this.path, {
                 start: offset,
@@ -449,6 +483,7 @@ export class Table extends EventEmitter {
     }
     async hashIndex(colName: string) {
         return this.createHash(colName)
+        //TODO accept an array to do multitple i.e forEach,
     }
     async hashIndexFast(colName: string) {
         return this.createHash(colName, true)
@@ -459,7 +494,12 @@ export class Table extends EventEmitter {
         options: { MAX_READS?: number } = {}
     ): Promise<any[]> {
         return new Promise(async (resolve, reject) => {
+            if (!this?.indexes?.[colName]?.hash) {
+                reject('no hash index')
+                return
+            }
             const hash = this.indexes[colName].hash
+            //@ts-ignore
             const ids: number[] = hash[lookup + '']
 
             //faster but limit problem 158.363ms
@@ -482,7 +522,7 @@ export class Table extends EventEmitter {
             }
             const rows = []
             for await (let chunk of split) {
-                rows.push(await Promise.all(chunk.map(async id => await this.read(id))))
+                rows.push(await Promise.all(chunk.map(async id => await this.getRow(id))))
             }
 
             // console.log('rows', rows)
@@ -491,15 +531,26 @@ export class Table extends EventEmitter {
     }
     async hashFindFast<T extends string | number>(colName: string, lookup: T): Promise<any[]> {
         return new Promise(async (resolve, reject) => {
+            if (!this?.indexes?.[colName]?.fastHash) {
+                reject('no fastHash index')
+                return
+            }
+            //@ts-ignore
             const hash = this.indexes[colName].fastHash[lookup + '']
             resolve(hash)
         })
+    }
+    rmTableSync() {
+        if (fs.existsSync(this.path)) {
+            this.writeStream.destroy()
+            fs.rmSync(this.path)
+        }
     }
 }
 
 type indexTypes = 'hash' | 'tree' | 'fastHash'
 interface Indexes {
-    [columnName: string]: { [key in indexTypes]?: HashIndex | treeIndex }
+    [columnName: string]: { [key in indexTypes]?: HashIndex | treeIndex | FastHashIndex }
 }
 interface HashIndex {
     [key: string]: number[]
@@ -507,5 +558,7 @@ interface HashIndex {
 interface FastHashIndex {
     [key: string]: any
 }
-interface treeIndex {}
+interface treeIndex {
+    [key: string]: number[]
+}
 //export default Table

@@ -1,7 +1,8 @@
 import * as fs from 'fs'
 import * as path from 'path'
+import { resolve } from 'path'
 import * as stream from 'stream'
-import { Table, schema } from '.'
+import { Table, schema, queryOptions } from '.'
 
 //cars
 const schema1: schema = [
@@ -13,7 +14,7 @@ const schema1: schema = [
 
 async function main() {
     const cars = new Table('samples/cars.db')
-    cars.createTable('cars', schema1, { overwrite: false })
+    await cars.createTable('cars', schema1, { overwrite: false })
     const id = await cars.push(['foffo', 435])
     console.log('id', id)
 
@@ -29,7 +30,7 @@ async function main() {
     }
     console.timeEnd()
     console.time()
-    const dat = await cars.read(22)
+    const dat = await cars.getRow(22)
     console.log('dat', dat)
 
     console.timeLog()
@@ -38,15 +39,15 @@ async function main() {
 
 async function read() {
     const cars = new Table('samples/cars.db') //6million
-    // books.createTable('books', schema2, { overwrite: true })
+    //await  books.createTable('books', schema2, { overwrite: true })
     await cars.getTable()
     console.log(await cars.getRowCount())
-    console.log('dat', await cars.read(8195))
+    console.log('dat', await cars.getRow(8195))
 }
 //read()
 async function q() {
     const cars = new Table('samples/cars.db') //6million
-    // books.createTable('books', schema2, { overwrite: true })
+    //await  books.createTable('books', schema2, { overwrite: true })
     await cars.getTable()
     console.time('ff')
     const options: queryOptions = {
@@ -79,7 +80,7 @@ const schema2: schema = [
 async function main2() {
     try {
         const books = new Table('samples/books.db')
-        books.createTable('books', schema2, { overwrite: true })
+        await books.createTable('books', schema2, { overwrite: true })
         // await books.getTable()
         const stats = await books.pushMany([
             ['mole diary', 'anne', 1982],
@@ -96,7 +97,7 @@ async function main2() {
 
         await books.push(['da vincis co', 'dan brown', 2004])
         // console.log('data', data)
-        const dat = await books.read(1)
+        const dat = await books.getRow(1)
         // console.time('push')
         // for (let i = 0; i < 6000000; i++) {
         //     let r = randomString()
@@ -189,7 +190,7 @@ function intB(min, max) {
 
 async function createFarmers() {
     const farmers = new Table('samples/farmers.db')
-    farmers.createTable('farmers', farmersSchema, { overwrite: true })
+    await farmers.createTable('farmers', farmersSchema, { ifExists: 'error' })
     for (let i = 0; i < 1_000_000; i++) {
         await farmers.push([
             rand(fnames) + ' ' + rand(fnames) + ' ' + rand(surnames),
@@ -204,7 +205,7 @@ async function createFarmers() {
 
 async function index() {
     const farmers = new Table('samples/farmers.db') //6million
-    // books.createTable('books', schema2, { overwrite: true })
+    //await  books.createTable('books', schema2, { overwrite: true })
     await farmers.getTable()
     console.time('hash')
     const hash = await farmers.hashIndex('name')
@@ -232,4 +233,125 @@ async function index() {
     console.timeEnd('select')
     //console.log('dat', dat)
 }
-index()
+//index()
+
+async function createFarmers2() {
+    const farmers = new Table('samples/farmers2.db')
+    await farmers.createTable('farmers', farmersSchema, { ifExists: 'error' })
+    for (let i = 0; i < 1_00; i++) {
+        await farmers.push([
+            rand(fnames) + ' ' + rand(fnames) + ' ' + rand(surnames),
+            rand(animals),
+            intB(1918, 2008),
+        ])
+    }
+    const all = await farmers.select()
+    console.log('all', all)
+}
+//createFarmers2()
+
+async function multi() {
+    // craete table 1 file assign to farmers
+    try {
+        const farmersA = new Table('samples/farmers3.db')
+        await farmersA.createTable('farmers', farmersSchema, { ifExists: 'read' })
+        for (let i = 0; i < 1_000_00; i++) {
+            await farmersA.push([
+                rand(fnames) + ' ' + rand(fnames) + ' ' + rand(surnames),
+                rand(animals),
+                intB(1918, 2008),
+            ])
+        }
+
+        //create a second table reading from the same file
+        const farmersB = new Table('samples/farmers3.db')
+        await farmersB.getTable()
+        console.log(await farmersA.getRow(1))
+        console.log(await farmersB.getRow(2))
+
+        //runs sync
+        const fun = new Promise((resolve, reject) => {})
+
+        var items = [...Array(3).keys()]
+        var fn = function makeTableObjects() {
+            // sample async action
+            return new Promise(resolve => {
+                const farmers = new Table('samples/farmers3.db')
+                resolve(farmers)
+            })
+        }
+        var fn2 = function insertRow(data) {
+            // sample async action
+            console.log('og', data)
+            // return new Promise(resolve => {
+            //     const farmers = new Table('samples/farmers3.db')
+            //     resolve(farmers.path)
+            // })
+        }
+        // map over forEach since it returns
+
+        var actions = items.map(fn) // run the function over all items
+
+        // // we now have a promises array and we want to wait for it
+
+        // // Promise.all(actions).then(
+        // //     data => console.log(data) // [2, 4, 6, 8, 10]
+        // // )
+        // var res2 = await Promise.all([...Array(3).keys()].map(fn))
+        //     .then(data => Promise.all(data.map(fn)))
+        //     .then(function (data) {
+        //         // the next `then` is executed after the promise has returned from the previous
+        //         // `then` fulfilled, in this case it's an aggregate promise because of
+        //         // the `.all`
+        //         //console.log(data)
+        //         return Promise.all(
+        //             data.map(obj => {
+        //                 console.log(obj.path)
+        //                 return new Promise(resolve => {
+        //                     setTimeout(() => {
+        //                         console.log('k;k')
+        //                         resolve('ll')
+        //                     }, 555)
+        //                     resolve('ll')
+        //                 })
+        //             })
+        //         )
+        //     })
+        // console.log('res2', res2)
+
+        // .then(function (data) {
+        //     // just for good measure
+        //     console.log(data)
+        //     return Promise.all(data.map(fn))
+        // })
+
+        const digits = [...Array(300).keys()]
+
+        const fObjects = digits.map((_, i) => new Table('samples/farmers3.db'))
+        //console.log('fObjects', fObjects)
+
+        await Promise.all(
+            fObjects.map(farmer => {
+                //console.log(farmer.path)
+                return farmer.getTable()
+                return farmer.getRow(intB(1, 100))
+
+                // farmers.getTable().then(async res => {
+                //     console.log(await farmers.getRow(intB(1, 100000)))
+                //     console.log(await farmers.getRow(2))
+                //     resolve()
+                // })
+            })
+        )
+        const res = await Promise.all(
+            fObjects.map(farmer => {
+                return farmer.getRow(intB(1, 10000))
+            })
+        )
+        console.log('ended')
+        //console.log('res', res)
+    } catch (error) {
+        console.error(error)
+    }
+}
+multi()

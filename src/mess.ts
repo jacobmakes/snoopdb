@@ -79,8 +79,8 @@ const schema2: schema = [
 
 async function main2() {
     try {
-        const books = new Table('samples/books.db')
-        await books.createTable('books', schema2, { overwrite: true })
+        const books = new Table('samples/books4.db')
+        await books.createTable('books', schema2, { ifExists: 'overwrite' })
         // await books.getTable()
         const stats = await books.pushMany([
             ['mole diary', 'anne', 1982],
@@ -126,6 +126,8 @@ async function main2() {
         await books.hashIndex('released')
         console.log(books.indexList())
         await books.hashFind('author', 'anne')
+        const ll = await books.getRow(120)
+        console.log('ll', ll)
 
         //console.log(books)
     } catch (error) {
@@ -133,7 +135,7 @@ async function main2() {
         throw error
     }
 }
-//main2()
+main2()
 
 function slow(where, limit) {
     console.time('slow')
@@ -328,19 +330,10 @@ async function multi() {
         const digits = [...Array(300).keys()]
 
         const fObjects = digits.map((_, i) => new Table('samples/farmers3.db'))
-        //console.log('fObjects', fObjects)
 
         await Promise.all(
             fObjects.map(farmer => {
-                //console.log(farmer.path)
                 return farmer.getTable()
-                return farmer.getRow(intB(1, 100))
-
-                // farmers.getTable().then(async res => {
-                //     console.log(await farmers.getRow(intB(1, 100000)))
-                //     console.log(await farmers.getRow(2))
-                //     resolve()
-                // })
             })
         )
         const res = await Promise.all(
@@ -349,9 +342,9 @@ async function multi() {
             })
         )
         console.log('ended')
-        //console.log('res', res)
     } catch (error) {
         console.error(error)
     }
 }
-multi()
+
+// multi()

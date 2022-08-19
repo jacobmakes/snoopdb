@@ -54,6 +54,7 @@ type column = [string, string, number]
 
 export type schema = column[]
 type row = (string | number)[]
+type getRowReturn = Promise<{ id: number; [key: string]: string | number } | false>
 interface queueItem {
     type: string
     data: Buffer
@@ -272,9 +273,9 @@ export class Table extends EventEmitter {
             })
         })
     }
-    public async pushMany(rows: row[]) {
+    public async pushMany(rows: row[]): Promise<{ added: number; startId: number }> {
         this.checkInit()
-        return new Promise(async (resolve, reject) => {
+        return new Promise((resolve, reject) => {
             const rowsBuffer: Buffer[] = []
             for (const row of rows) {
                 rowsBuffer.push(this.makeRowBuffer(row))
@@ -304,7 +305,12 @@ export class Table extends EventEmitter {
                     //@ts-ignore
                     const stringBuff = Buffer.from(row[i])
                     if (stringBuff.length > this.columns[i][2]) {
-                        throw 'row.length must match schema.length'
+                        throw (
+                            'row.length must match schema.length a row: `' +
+                            row[i] +
+                            '` > ' +
+                            this.columns[i][2]
+                        )
                     }
                     buff = Buffer.alloc(this.columns[i][2])
                     stringBuff.copy(buff)
@@ -329,7 +335,8 @@ export class Table extends EventEmitter {
         }
         return Buffer.concat([newRow, Buffer.alloc(padding)])
     }
-    public async getRow(id: number) {
+
+    public async getRow(id: number): getRowReturn {
         return new Promise((resolve, reject) => {
             const offset = (id - 1) * this.rowSize + this.start
             const str = fs.createReadStream(this.path, {
@@ -337,9 +344,12 @@ export class Table extends EventEmitter {
                 end: offset + this.rowSize - 1,
                 highWaterMark: this.rowSize + 1,
             })
+            console.log('id', id)
+
             str.on('data', (chunk: Buffer) => {
                 str.close()
                 let offset = 0
+                console.log('point', id, chunk.toString('utf8', offset, offset + 10))
                 const out: obj = { id }
                 const cols = this.columns
                 for (let i = 0; i < cols?.length; i++) {
@@ -356,12 +366,14 @@ export class Table extends EventEmitter {
                             break
 
                         default:
+                            console.log('lol')
                             break
                     }
                 }
 
-                resolve(out)
+                return resolve(out)
             })
+            str.on('end', () => resolve(false))
             //below for larger sizes
             // let chunks = []
             // str.on('data', (chunk) => chunks.push(Buffer.from(chunk))) //A & B
@@ -526,7 +538,7 @@ export class Table extends EventEmitter {
             }
 
             // console.log('rows', rows)
-            resolve(rows)
+            return resolve(rows)
         })
     }
     async hashFindFast<T extends string | number>(colName: string, lookup: T): Promise<any[]> {

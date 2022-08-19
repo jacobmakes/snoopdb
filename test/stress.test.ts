@@ -13,15 +13,15 @@ beforeAll(() => {
     fs.mkdirSync(TEMP_DIR)
     console.log(fs.statSync(TEMP_DIR))
 })
-afterAll(() => {
-    try {
-        console.log(fs.statSync(TEMP_DIR))
-        fs.unlinkSync(TEMP_DIR)
-        fs.rmSync(TEMP_DIR, { recursive: true })
-    } catch (err) {
-        console.error(err)
-    }
-})
+// afterAll(() => {
+// given up for windows
+//     try {
+//         console.log(fs.statSync(TEMP_DIR))
+//         fs.rmdirSync(TEMP_DIR)
+//     } catch (err) {
+//         console.error(err)
+//     }
+// })
 
 const farmersSchema: schema = [
     ['name', 'string', 30],

@@ -26,7 +26,7 @@ beforeAll(() => {
 // })
 const schema1: schema = [
     //id is auto
-    ['model', 'string', 8],
+    ['model', 'string', 10],
     ['produced', 'int', 4], // or allow user to enter a max number and calc eg. 1_000_000 => 3 because 3 bye max over 1mil
     //  atoms:['int',6],
 ]
@@ -111,18 +111,47 @@ describe('main suite', () => {
     it('copy', async () => {})
     it('copy', async () => {})
 
-    // it('Test Creating table', async () => {
-    //     //const trains = new Table(CAR_PATH)
-    //     await trains.createTable('trains', schema1, { ifExists: 'error' })
-    //     const row1 = await trains.push(['foffo', 435])
-    //     expect(row1).toEqual({ id: 1, model: 'foffo', produced: 435 })
-    //     // await trains.push(['foggy', 12334556])
-    //     // await trains.push(['👵🏽', 35])
-    //     // const row4 = await trains.push(['vvvolo', 1234556])
-    //     // expect(row4).toEqual({ id: 4, model: 'vvvolo', produced: 1234556 })
-    //     // await trains.push(['b', 43])
-    //     // await trains.push(['triumpth', 380])
-    //     // const readRow4 = await trains.getRow(4)
-    //     // expect(readRow4).toEqual({ id: 4, model: 'vvvolo', produced: 1234556 })
-    // })
+    it('Can push and read data correctly', async () => {
+        //const trains = new Table(CAR_PATH)
+        await trains.createTable('trains', schema1, { ifExists: 'error' })
+        const row1 = await trains.push(['foffo', 435])
+        expect(row1).toEqual({ id: 1, model: 'foffo', produced: 435 })
+        await trains.push(['foggy', 12334556])
+        await trains.push(['👵🏽', 35])
+        const row4 = await trains.push(['vvvolo', 1234556])
+        expect(row4).toEqual({ id: 4, model: 'vvvolo', produced: 1234556 })
+        await trains.push(['b', 43])
+        await trains.push(['triumpth', 380])
+        const readRow4 = await trains.getRow(4)
+        expect(readRow4).toEqual({ id: 4, model: 'vvvolo', produced: 1234556 })
+    })
+    it('Can push many rows', async () => {
+        await trains.createTable('trains', schema1, { ifExists: 'error' })
+        const row1 = await trains.push(['foffo', 435])
+        expect(row1).toEqual({ id: 1, model: 'foffo', produced: 435 })
+        await trains.push(['foggy', 12334556])
+        await trains.push(['👵🏽', 35])
+        const manyRows = [
+            ['going', 435],
+            ['loco', 4325],
+            ['down', 678],
+            ['in', 786],
+            ['', 786],
+            ['alcupolco', 786],
+        ]
+        const outcome = await trains.pushMany(manyRows)
+        expect(outcome).toEqual({ added: 6, startId: 4 })
+        const rowAfter = await trains.push(['vvvolo', 1234556])
+        const readRow5 = await trains.getRow(5)
+        expect(readRow5).toEqual({ id: 5, model: 'loco', produced: 4325 })
+        const pos = outcome.startId + outcome.added
+        console.log(await trains.select())
+        expect(rowAfter).toEqual({
+            id: pos,
+            model: 'vvvolo',
+            produced: 1234556,
+        })
+        const readRow7 = await trains.getRow(11)
+        console.log('readRow7', readRow7)
+    })
 })

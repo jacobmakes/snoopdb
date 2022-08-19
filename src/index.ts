@@ -65,9 +65,9 @@ interface tableConfig {
 }
 type obj = { [key: string]: any }
 export interface queryOptions {
-    columns?: string[]
-    where?: (arg: obj) => boolean
-    transform?: (arg: obj) => any
+    //columns?: string[]//deprecated before release
+    filter?: (arg: obj) => boolean
+    map?: (arg: obj) => any
     limit?: number
     offset?: number
 }
@@ -337,6 +337,7 @@ export class Table extends EventEmitter {
     }
 
     public async getRow(id: number): getRowReturn {
+        if (id < 1) throw "Id's start at 1!" // check impact of this on speed
         return new Promise((resolve, reject) => {
             const offset = (id - 1) * this.rowSize + this.start
             const str = fs.createReadStream(this.path, {
@@ -350,7 +351,7 @@ export class Table extends EventEmitter {
                 str.close()
                 let offset = 0
                 console.log('point', id, chunk.toString('utf8', offset, offset + 10))
-                const out: obj = { id }
+                const out: { id: number; [key: string]: string | number } = { id }
                 const cols = this.columns
                 for (let i = 0; i < cols?.length; i++) {
                     switch (cols[i][1]) {
@@ -388,8 +389,8 @@ export class Table extends EventEmitter {
     }
 
     public async select(options: queryOptions = {}) {
-        if (options.transform && options.columns)
-            throw 'cannot use options transform and columns together. pick one'
+        // if (options.map && options.columns)
+        //     throw 'cannot use options map and columns together. pick one'
         return new Promise(async (resolve, reject) => {
             let resultCount = 0
             const rowsPerChunk = 10000 // Biggest effect on speed
@@ -402,7 +403,7 @@ export class Table extends EventEmitter {
             //     streamConfig.end = options.limit * this.rowSize
             // }
             const str = fs.createReadStream(this.path, streamConfig)
-            const search = (str: string) => str.includes('gg')
+
             let results: any[] = []
             let chunkIndex = -1
             str.on('data', (chunk: Buffer) => {
@@ -439,16 +440,16 @@ export class Table extends EventEmitter {
                         }
                     }
 
-                    if (options.where && options.where(out) === false) continue
-                    if (options.columns) {
-                        this.columns.forEach(col => {
-                            if (!options.columns?.includes(col[0])) {
-                                delete out[col[0]]
-                            }
-                        })
-                    }
-                    if (options.transform) {
-                        out = options.transform(out)
+                    if (options.filter && options.filter(out) === false) continue
+                    // if (options.columns) {
+                    //     this.columns.forEach(col => {
+                    //         if (!options.columns?.includes(col[0])) {
+                    //             delete out[col[0]]
+                    //         }
+                    //     })
+                    // }
+                    if (options.map) {
+                        out = options.map(out)
                     }
                     results.push(out)
 
@@ -480,7 +481,7 @@ export class Table extends EventEmitter {
         return new Promise(async (resolve, reject) => {
             const hash: obj = {}
             await this.select({
-                transform: row => {
+                map: row => {
                     const key = row[colName]
                     if (!hash[key]) {
                         hash[key] = []

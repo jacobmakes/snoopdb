@@ -53,13 +53,13 @@ async function q() {
     const options: queryOptions = {
         limit: 7,
         offset: 42656,
-        where: row => row.model.includes('vv') && row.produced < 80000000,
+        filter: row => row.model.includes('vv') && row.produced < 80000000,
     }
     const dat = await cars.select(options)
     console.log('dat', dat)
 
     console.timeEnd('ff')
-    slow(options.where, options.limit)
+    slow(options.filter, options.limit)
     //console.log('dat', dat)
 }
 //q()
@@ -81,6 +81,7 @@ async function main2() {
     try {
         const books = new Table('samples/books4.db')
         await books.createTable('books', schema2, { ifExists: 'overwrite' })
+
         // await books.getTable()
         const stats = await books.pushMany([
             ['mole diary', 'anne', 1982],
@@ -117,17 +118,22 @@ async function main2() {
         // console.log('all', all)
 
         // const sel = await books.select({
-        //     where: row => row.author.includes('jk'),
+        //     filter: row => row.author.includes('jk'),
         //     //columns: ['id', 'released'],
-        //     transform: ({ id, author, released }) => released + '',
+        //     map: ({ id, author, released }) => released + '',
         // })
         // console.log('sel', sel)
         await books.hashIndex('author')
         await books.hashIndex('released')
         console.log(books.indexList())
         await books.hashFind('author', 'anne')
-        const ll = await books.getRow(120)
-        console.log('ll', ll)
+        const bookDescriptions = await books.select({
+            map: book =>
+                `${book.title} written by ${book.author} was released ${
+                    new Date().getFullYear() - book.released
+                } years ago`,
+        })
+        console.log('booksDescription', bookDescriptions)
 
         //console.log(books)
     } catch (error) {
@@ -137,7 +143,7 @@ async function main2() {
 }
 main2()
 
-function slow(where, limit) {
+function slow(filter, limit) {
     console.time('slow')
     const data = fs.readFileSync('./samples/cars.json')
     const arr = JSON.parse(data)
@@ -145,7 +151,7 @@ function slow(where, limit) {
     const results = []
     for (let i = 0; i < arr.length; i++) {
         const row = arr[i]
-        if (where && where(row)) {
+        if (filter && filter(row)) {
             results.push(row)
             if (limit && results.length > limit) break
         }

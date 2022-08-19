@@ -1,41 +1,57 @@
-use case for this is easy to use way to use a file as a database. Can read a single record much faster than those that have to load entire data into memory before reading a single value
+# Snoopdb
 
-Performance
-For 6 million rows with very small columns (lenfth 12)
-to load into memory and parse JSON takes aprox 600ms.
-this can read in ~1ms
-to get directly from an array in memory eg array[i] takes 0.01ms
+A zero dependancy node.js library for when you need fast reads but a full database is too much and reading from a json file is too slow. This organizes text in file in a way that allows it to get the exact position of a row without having to read and parse the entire file. Meaning 1ms reads on [databases GBs in size](#performance).
 
-Limted queries
-this can read from the start of the file and stop when needed allowing much faster queries or it can start from a certain id offset for faster queries
+## Use cases
 
-implementing a column indexing feature would also be useful albiet probably end up being not much faster except occasionly
+-   A good learning tool and intro to SQL
+-   in a serverless environment (cloud/lamda function) where you can read directly from a file stored there.
 
-TODO:
-count function and possibly unique function
+## Instalation
 
-hashFind vs hashFindFast
-hashFind creates an object with an array of ids it stores in memory eg:
-
-```
-interface HashIndex {
-    [key: string]: number[]
-}
+```sh
+npm i snoopdb
 ```
 
-each time it does a find it looks up every id individually using the getRow. This means this function is best used when the index groups data into small amounts, with each key ideally having less than 0.1% of the data.
-this is about 10 times faster than reading the entire file
+## Quick start
 
-hashFindFast fast stores the entire file in memory but with a hash index. It's 100 times faster than above function and I would reccomend using it unless you're going to exceed your computers memory. Then it's probably better to use a real db.
+```javascript
+const booksSchema = [
+    ['title', 'string', 40],
+    ['author', 'string', 20],
+    ['released', 'int', 2],
+    ['sold', 'int', 4],
+]
+const books = new Table('samples/books4.db')
+await books.createTable('books', schema2, { ifExists: 'overwrite' })
+await books.push(['Harry Potter', 'JK rowling', 1982, 465436436])
 
-If you use multikey/multiple indexes (not implemented) this may be faster in some cases
-
+await books.pushMany([
+    ['mole diary', 'anne', 1982, 465436436],
+    ['scouting for gi', 'baden', 1943, 345342654],
+])
+const { id, title, author, released, sold } = await books.getRow(10324324353)
+const allBooks = await books.select()
+const oldBooks = await books.select({ filter: row => row.released < 1950 })
+const bookDescription = await books.select({
+    map: book =>
+        `${book.title} written by ${book.author} was released ${
+            new Date().getFullYear() - book.released
+        } years ago`,
+})
 ```
-interface FastHashIndex {
-    [key: string]: any
-}
+
+## Guide
+
+### Create the Schema
+
+Snoop db is a simple table store
+
+```javascript
+const booksSchema = [
+    ['title', 'string', 40],
+    ['author', 'string', 20],
+    ['released', 'int', 2],
+    ['sold', 'int', 4],
+]
 ```
-
-These indexes DO NOT change when the database is updated or written to so you must call hashIndex() or hashIndexFast() to reindex manually. Again the use case for this database is high reads and a smallor zero number of writes
-
-rename transform to map

@@ -26,8 +26,7 @@ beforeAll(() => {
 const farmersSchema: schema = [
     ['name', 'string', 30],
     ['animal', 'string', 10],
-    ['born', 'int', 2], // or allow user to enter a max number and calc eg. 1_000_000 => 3 because 3 bye max over 1mil
-    //  atoms:['int',6],
+    ['born', 'int', 2],
 ]
 
 const fnames = [

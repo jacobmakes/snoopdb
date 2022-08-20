@@ -18,6 +18,10 @@ function readBinary(path: rP[0], options?: rP[1]) {
     str.on('data', chunk => (chunks += chunk.toString('utf-8'))) //A & B
     str.on('end', () => console.log('ll', chunks, chunks.length)) //A 5.609ms
 }
+function isIntSafe(int: number, bytes: number) {
+    const max = 256 ** bytes / 2
+    return int < -max || int >= max
+}
 
 const cutNull = (string: string) => {
     let i = 0
@@ -83,7 +87,7 @@ export class Table extends EventEmitter {
     private indexes: Indexes = {}
     private locked: boolean
     private writeStream!: fs.WriteStream
-    private rows!: number
+    private rows!: number // I don't think this is used conditionally look at removing
 
     constructor(readonly path: string) {
         super()
@@ -97,12 +101,11 @@ export class Table extends EventEmitter {
         }
     }
 
-    public async createTable(name: string, columns: schema, config?: tableConfig) {
+    public async createTable(name: string, columns: schema, config?: tableConfig): Promise<Table> {
         if (fs.existsSync(this.path)) {
             if (config?.ifExists === 'read') {
-                if (this.initialized) return
-                await this.getTable()
-                return
+                if (this.initialized) return this
+                return this.getTable()
             } else if (config?.ifExists !== 'overwrite') {
                 throw 'table already exists set config.ifExists to get or overwrite'
             }
@@ -133,6 +136,11 @@ export class Table extends EventEmitter {
                             `invalid type ${col[1]} acceptable types: ${colTypes.join('","')}`
                         )
                     }
+                    if (col[1] === 'int') {
+                        if (col[2] < 1 || col[2] > 6) {
+                            return reject(`int column size must be between 1 and 6`)
+                        }
+                    }
                 })
                 if (colNames.length !== new Set(colNames).size)
                     return reject('column names must be unique')
@@ -157,16 +165,15 @@ export class Table extends EventEmitter {
                 // })
                 this.start = START
                 console.log(headers)
-                //@ts-ignore
                 this.rowSize = calculateRowSize(this.columns)
                 this.rows = 0
                 console.log('created table')
                 this.initialized = true
-                return resolve(true)
+                return resolve(this)
             })
         })
     }
-    public async getTable() {
+    public async getTable(): Promise<Table> {
         //check if table exists
         if (!fs.existsSync(this.path)) throw 'table does not exist'
         if (this.initialized) throw 'table already initialized'
@@ -204,7 +211,7 @@ export class Table extends EventEmitter {
                         })
                         this.writeStream.on('open', () => {
                             this.initialized = true
-                            resolve(cols)
+                            resolve(this)
                         })
                     })
                 })
@@ -252,10 +259,12 @@ export class Table extends EventEmitter {
             this.emit(symbol, { startId: initRowCount + 1, added: rowAddCount })
         )
     }
-    public async push(row: row) {
+
+    //I'm shocked I got this typescript to work
+    public async push<T extends Array<any>>(row: [...T]) {
         this.checkInit()
         return new Promise((resolve, reject) => {
-            const rowBuffer = this.makeRowBuffer(row)
+            const rowBuffer = this.makeRowBuffer<T>(row)
             const symbol = Symbol()
             this.once(symbol, id => {
                 // console.log('listening', id)
@@ -291,7 +300,7 @@ export class Table extends EventEmitter {
             })
         })
     }
-    private makeRowBuffer(row: row) {
+    private makeRowBuffer<T extends Array<any>>(row: [...T]) {
         if (row.length !== this.columns?.length) {
             throw 'row.length must match schema.length. row:' + row
         }
@@ -302,7 +311,6 @@ export class Table extends EventEmitter {
             let buff: Buffer
             switch (this.columns[i][1]) {
                 case 'string':
-                    //@ts-ignore
                     const stringBuff = Buffer.from(row[i])
                     if (stringBuff.length > this.columns[i][2]) {
                         throw (
@@ -317,8 +325,16 @@ export class Table extends EventEmitter {
                     break
                 case 'int':
                     if (!Number.isInteger(row[i])) throw 'non integer value: ' + row[i]
+                    if (isIntSafe(row[i], this.columns[i][2]))
+                        throw (
+                            row[i] +
+                            ' out of range: -' +
+                            256 ** this.columns[i][2] / 2 +
+                            '-' +
+                            (256 ** this.columns[i][2] / 2 - 1)
+                        )
                     buff = Buffer.allocUnsafe(this.columns[i][2])
-                    //@ts-ignore
+
                     buff.writeIntLE(row[i], 0, this.columns[i][2])
                     break
                 default:
@@ -345,12 +361,11 @@ export class Table extends EventEmitter {
                 end: offset + this.rowSize - 1,
                 highWaterMark: this.rowSize + 1,
             })
-            console.log('id', id)
 
             str.on('data', (chunk: Buffer) => {
                 str.close()
                 let offset = 0
-                console.log('point', id, chunk.toString('utf8', offset, offset + 10))
+
                 const out: { id: number; [key: string]: string | number } = { id }
                 const cols = this.columns
                 for (let i = 0; i < cols?.length; i++) {
@@ -388,7 +403,7 @@ export class Table extends EventEmitter {
         })
     }
 
-    public async select(options: queryOptions = {}) {
+    public async select(options: queryOptions = {}): Promise<row[]> {
         // if (options.map && options.columns)
         //     throw 'cannot use options map and columns together. pick one'
         return new Promise(async (resolve, reject) => {
@@ -470,7 +485,7 @@ export class Table extends EventEmitter {
             })
         })
     }
-    indexList() {
+    public indexList() {
         const out: obj = {}
         for (const [key, value] of Object.entries(this.indexes)) {
             out[key] = Object.keys(value)
@@ -478,6 +493,8 @@ export class Table extends EventEmitter {
         return out
     }
     private async createHash(colName: string, fast = false): Promise<HashIndex | FastHashIndex> {
+        if (!this.columns.map(col => col[0]).includes(colName))
+            throw 'column ' + colName + ' does not exist'
         return new Promise(async (resolve, reject) => {
             const hash: obj = {}
             await this.select({
@@ -501,19 +518,20 @@ export class Table extends EventEmitter {
     async hashIndexFast(colName: string) {
         return this.createHash(colName, true)
     }
-    async hashFind<T extends string | number>(
+    async hashFind(
         colName: string,
-        lookup: T,
+        lookup: string | number,
         options: { MAX_READS?: number } = {}
     ): Promise<any[]> {
         return new Promise(async (resolve, reject) => {
             if (!this?.indexes?.[colName]?.hash) {
-                reject('no hash index')
+                reject('no hash index for`' + colName + '`')
                 return
             }
             const hash = this.indexes[colName].hash
             //@ts-ignore
-            const ids: number[] = hash[lookup + '']
+            const ids: number[] = [...hash[lookup + '']]
+            if (!ids || !ids.length) return false
 
             //faster but limit problem 158.363ms
             // const rows = await Promise.all(ids.map(async id => await this.read(id)))
@@ -535,7 +553,7 @@ export class Table extends EventEmitter {
             }
             const rows = []
             for await (let chunk of split) {
-                rows.push(await Promise.all(chunk.map(async id => await this.getRow(id))))
+                rows.push(...(await Promise.all(chunk.map(async id => await this.getRow(id)))))
             }
 
             // console.log('rows', rows)
@@ -545,7 +563,7 @@ export class Table extends EventEmitter {
     async hashFindFast<T extends string | number>(colName: string, lookup: T): Promise<any[]> {
         return new Promise(async (resolve, reject) => {
             if (!this?.indexes?.[colName]?.fastHash) {
-                reject('no fastHash index')
+                reject('no fastHash index for`' + colName + '`')
                 return
             }
             //@ts-ignore

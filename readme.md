@@ -15,15 +15,15 @@ npm i snoopdb
 
 ## Quick start
 
-```javascript
+```js
 const booksSchema = [
     ['title', 'string', 40],
     ['author', 'string', 20],
     ['released', 'int', 2],
     ['sold', 'int', 4],
 ]
-const books = new Table('samples/books4.db')
-await books.createTable('books', schema2, { ifExists: 'overwrite' })
+const books = new Table('books.db')
+await books.createTable('books', booksSchema, { ifExists: 'overwrite' })
 await books.push(['Harry Potter', 'JK rowling', 1982, 465436436])
 
 await books.pushMany([
@@ -45,9 +45,19 @@ const bookDescription = await books.select({
 
 ### Create the Schema
 
-Snoop db is a simple table store
+Snoop db is a simple table store, think excel. But each column must be defined before and cannot be changed. The scheme is defined very simply in an array of column details which contain
 
-```javascript
+```
+['column name','column type',size]
+```
+
+**column name** is a string describing the column. **column type** is what will be stored in it, currently the only two types are `string` and `int` and **size** is how many bytes long the column will be.
+
+For strings the length is aproximately the number of characters, but some characters like 👵🏽 can take up more than one byte.
+
+For ints the size must be between 1 and 6 inclusive where the max number is (256^size)/2. eg An int with a max size 2 must be from -32768 to 32767.
+
+```js
 const booksSchema = [
     ['title', 'string', 40],
     ['author', 'string', 20],
@@ -55,3 +65,18 @@ const booksSchema = [
     ['sold', 'int', 4],
 ]
 ```
+
+### Create the table and push data
+
+```js
+const books = new Table('books.db')
+await books.createTable('books', booksSchema, { ifExists: 'overwrite' })
+await books.push(['Harry Potter', 'JK rowling', 1982, 465436436])
+
+await books.pushMany([
+    ['mole diary', 'anne', 1982, 465436436],
+    ['scouting for gi', 'baden', 1943, 345342654],
+])
+```
+
+You push data into the table in an order than

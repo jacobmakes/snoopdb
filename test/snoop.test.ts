@@ -30,7 +30,7 @@ const schema1: schema = [
     ['produced', 'int', 4], // or allow user to enter a max number and calc eg. 1_000_000 => 3 because 3 bye max over 1mil
     //  atoms:['int',6],
 ]
-it("mew table doesn't create file", () => {
+it("New table doesn't create file", () => {
     const trains = new Table(TRAIN_PATH)
     expect(fs.existsSync(TRAIN_PATH)).toBe(false)
     trains.rmTableSync()
@@ -71,6 +71,24 @@ describe('main suite', () => {
                 { ifExists: 'error' }
             )
         ).rejects.toBe('cannot name column "id"')
+    })
+    it('column size must be between 1 and 6', async () => {
+        const s1: schema = [
+            ['model', 'string', 10],
+            ['produced', 'int', 7],
+        ]
+        const s2: schema = [
+            ['model', 'string', 10],
+            ['produced', 'int', 7],
+        ]
+        const trains = makeRandomTable()
+        await expect(trains.createTable('trains', s1, { ifExists: 'error' })).rejects.toContain(
+            'column size must be between'
+        )
+        const trains2 = makeRandomTable()
+        await expect(trains2.createTable('trains', s2, { ifExists: 'error' })).rejects.toContain(
+            'column size must be between'
+        )
     })
     it("reading a table that doesn't exist fails", async () => {
         const trains = makeRandomTable()
@@ -132,6 +150,8 @@ describe('Adding Data', () => {
         await trains.push(['triumpth', 380])
         const readRow4 = await trains.getRow(4)
         expect(readRow4).toEqual({ id: 4, model: 'vvvolo', produced: 1234556 })
+        const readRowAgain = await trains.getRow(4)
+        expect(readRowAgain).toEqual({ id: 4, model: 'vvvolo', produced: 1234556 })
     })
     it('Can push many rows', async () => {
         const trains = makeRandomTable()
@@ -210,14 +230,211 @@ describe('Adding Data', () => {
         const outcome2 = await trains2.pushMany(manyRows)
         expect(outcome2).toEqual({ added: 6, startId: 11 })
     })
-    it('reading bad id returns false', async () => {
+    it('Pushing string too large fails', async () => {
         const trains = makeRandomTable()
         await trains.createTable('trains', schema1, { ifExists: 'error' })
-        const row1 = await trains.push(['cleaveland', 435])
+        expect(trains.push(['There once was an ugly duckling', 435])).rejects.toContain(
+            'row.length must match schema.length a row'
+        )
+        expect(
+            trains.pushMany([
+                ['quack', 435],
+                ['There once was an ugly duckling', 435],
+            ])
+        ).rejects.toContain('row.length must match schema.length a row')
+    })
+
+    it('Pushing int too large fails int 1', async () => {
+        const s1: schema = [
+            ['model', 'string', 10],
+            ['produced', 'int', 1],
+        ]
+        const trains = makeRandomTable()
+        await trains.createTable('trains', s1, { ifExists: 'error' })
+        await trains.push(['duck', -128])
+        await expect(trains.push(['duck', 128])).rejects.toContain('out of range')
+        await expect(trains.push(['duck', -455])).rejects.toContain('out of range')
+    })
+    it('Pushing int too large fails int 4', async () => {
+        const s1: schema = [
+            ['model', 'string', 10],
+            ['produced', 'int', 4],
+        ]
+        const trains = makeRandomTable()
+        await trains.createTable('trains', s1, { ifExists: 'error' })
+        await trains.push(['duck', 256 ** 4 / 2 - 2])
+        await expect(trains.push(['duck', 256 ** 4])).rejects.toContain('out of range')
+        await expect(trains.push(['duck', 256 ** 5])).rejects.toContain('out of range')
+        await expect(trains.push(['duck', 4523534542354325])).rejects.toContain('out of range')
+        await expect(trains.push(['duck', 4523534544354354352354325435])).rejects.toContain(
+            'out of range'
+        )
     })
     it('reading bad id returns false', async () => {
         const trains = makeRandomTable()
         await trains.createTable('trains', schema1, { ifExists: 'error' })
         const row1 = await trains.push(['cleaveland', 435])
+    })
+})
+
+const farmersSchema: schema = [
+    ['name', 'string', 30],
+    ['animal', 'string', 10],
+    ['born', 'int', 2],
+]
+
+const fnames = [
+    'Emily',
+    'Aaron',
+    'Charles',
+    'Rebecca',
+    'Jacob',
+    'Stephen',
+    'Patrick',
+    'Sean',
+    'Erin',
+    'Zachary',
+    'Jamie',
+    'Kelly',
+    'Samantha',
+]
+const surnames = ['Rogers', 'Beckett', 'Juniper', 'Daily', 'Bruno']
+
+const animals = ['sheep', 'cow', 'pig', 'chicken']
+
+const rand = (arr: any[]) => {
+    return arr[Math.floor(Math.random() * arr.length)]
+}
+
+function intB(min: number, max: number) {
+    // min and max included
+    return Math.floor(Math.random() * (max - min + 1) + min)
+}
+
+const FARMER_PATH = resolve(TEMP_DIR, 'farmers')
+
+describe('Selecting data', () => {
+    let farmers: Table
+    const SIZE = 40000
+    const EXTRA = 200
+    async function makeFarmers() {
+        farmers = new Table(FARMER_PATH)
+        await farmers.createTable('farmers', farmersSchema, { ifExists: 'overwrite' })
+        for (let i = 0; i < SIZE; i++) {
+            await farmers.push([
+                rand(fnames) + ' ' + rand(fnames) + ' ' + rand(surnames),
+                rand(animals),
+                intB(1918, 2008),
+            ])
+        }
+        await farmers.push(['Danny', 'sheep', 2009])
+        const arr: (string | number)[][] = []
+        for (let i = 0; i < EXTRA; i++) {
+            arr.push([
+                rand(fnames) + ' ' + rand(fnames) + ' ' + rand(surnames),
+                'unicorn',
+                intB(1918, 2008),
+            ])
+        }
+        await farmers.pushMany(arr)
+    }
+    beforeAll(async () => {
+        await makeFarmers()
+    })
+    it('selects the right number of columns', async () => {
+        const all = await farmers.select()
+        expect(all.length).toEqual(SIZE + EXTRA + 1)
+    })
+    it('rowCount works', async () => {
+        const count = await farmers.getRowCount()
+        expect(count).toEqual(SIZE + EXTRA + 1)
+    })
+    it('rowCountSync works', () => {
+        const count = farmers.getRowCountSync()
+        expect(count).toEqual(SIZE + EXTRA + 1)
+    })
+    it('filter works', async () => {
+        const unicornOwners = await farmers.select({
+            filter: row => row.animal === 'unicorn',
+        })
+        expect(unicornOwners.length).toEqual(EXTRA)
+    })
+    it('map works', async () => {
+        const danny = await farmers.select({
+            filter: row => row.name === 'Danny',
+            map: row => `Oh, ${row.name} boy, the pipes, the pipes are calling`,
+        })
+        expect(danny.length).toEqual(1)
+        expect(danny[0]).toEqual('Oh, Danny boy, the pipes, the pipes are calling')
+    })
+    describe('Index testing', () => {
+        it('hash index works', async () => {
+            await farmers.hashIndex('name')
+            await expect(farmers.hashIndex('age')).rejects.toContain('does not exist')
+
+            let danny = await farmers.hashFind('name', 'Danny')
+            expect(danny.length).toEqual(1)
+            expect(danny[0].born).toEqual(2009)
+            //twice because it was orignally modifying the hash
+            danny = await farmers.hashFind('name', 'Danny')
+            expect(danny.length).toEqual(1)
+            expect(danny[0].born).toEqual(2009)
+            await farmers.hashIndex('born')
+            danny = await farmers.hashFind('born', 2009)
+            expect(danny[0].name).toEqual('Danny')
+            await expect(farmers.hashFind('animal', 19)).rejects.toContain('no hash index for')
+        })
+        it('Fast hash index works', async () => {
+            await farmers.hashIndexFast('name')
+            await expect(farmers.hashIndexFast('age')).rejects.toContain('does not exist')
+
+            let danny = await farmers.hashFindFast('name', 'Danny')
+            expect(danny.length).toEqual(1)
+            expect(danny[0].born).toEqual(2009)
+            //twice because it was orignally modifying the hash
+            danny = await farmers.hashFindFast('name', 'Danny')
+            expect(danny.length).toEqual(1)
+            expect(danny[0].born).toEqual(2009)
+            await farmers.hashIndexFast('born')
+            danny = await farmers.hashFindFast('born', 2009)
+            expect(danny[0].name).toEqual('Danny')
+            await expect(farmers.hashFindFast('animal', 19)).rejects.toContain(
+                'no fastHash index for'
+            )
+        })
+        it('hash index works to update', async () => {
+            await makeFarmers()
+            await farmers.hashIndex('name')
+            await farmers.hashIndex('animal')
+            const danny = await farmers.hashFind('name', 'Danny')
+            const pigFarmersA = await farmers.hashFind('animal', 'pig')
+            expect(danny.length).toEqual(1)
+            expect(danny[0].born).toEqual(2009)
+            await farmers.push(['Danny', 'pig', 2008])
+            expect(danny.length).toEqual(1) //because index not updated
+            await farmers.hashIndex('animal')
+            await farmers.hashIndex('name')
+            const danny2 = await farmers.hashFind('name', 'Danny')
+            const pigFarmersB = await farmers.hashFind('animal', 'pig')
+            expect(danny2.length).toEqual(2) //because index not updated
+            expect(pigFarmersA.length + 1).toEqual(pigFarmersB.length)
+        })
+        it('hash index Fast works to update', async () => {
+            await makeFarmers()
+            await farmers.hashIndexFast('name')
+            await farmers.hashIndexFast('animal')
+            const danny = await farmers.hashFindFast('name', 'Danny')
+            const pigFarmersA = await farmers.hashFindFast('animal', 'pig')
+            expect(danny.length).toEqual(1)
+            expect(danny[0].born).toEqual(2009)
+            await farmers.push(['Danny', 'pig', 2008])
+            expect(danny.length).toEqual(1) //because index not updated
+            await farmers.hashIndexFast('animal')
+            await farmers.hashIndexFast('name')
+            const danny2 = await farmers.hashFindFast('name', 'Danny')
+            const pigFarmersB = await farmers.hashFindFast('animal', 'pig')
+            expect(danny2.length).toEqual(2) //because index not updated
+            expect(pigFarmersA.length + 1).toEqual(pigFarmersB.length)
+        })
     })
 })

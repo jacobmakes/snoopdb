@@ -14,7 +14,7 @@ const schema1: schema = [
 
 async function main() {
     const cars = new Table('samples/cars.db')
-    await cars.createTable('cars', schema1, { overwrite: false })
+    await cars.createTable('cars', schema1, { ifExists: 'overwrite' })
     const id = await cars.push(['foffo', 435])
     console.log('id', id)
 
@@ -141,7 +141,7 @@ async function main2() {
         throw error
     }
 }
-main2()
+//main2()
 
 function slow(filter, limit) {
     console.time('slow')
@@ -226,11 +226,11 @@ async function index() {
     console.timeEnd('hashF')
     console.time('lookup')
     console.log(farmers.indexList())
-    const findF = await farmers.hashFind('name', 'Patrick Erin Bruno')
+    const find = await farmers.hashFind('name', 'Patrick Erin Bruno')
     console.timeEnd('lookup')
     console.time('lookupF')
     console.log(farmers.indexList())
-    const find = await farmers.hashFindFast('name', 'Patrick Erin Bruno')
+    const findF = await farmers.hashFindFast('name', 'Patrick Erin Bruno')
     console.timeEnd('lookupF')
     console.log('find.length', find.length)
 
@@ -354,3 +354,43 @@ async function multi() {
 }
 
 // multi()
+
+//push: 509.66ms
+//pushMany: 99.505ms
+async function pushVsMany() {
+    const SIZE = 1000
+    const farmers = new Table('samples/f200')
+    await (
+        await farmers.createTable('farmers', farmersSchema, { ifExists: 'overwrite' })
+    ).push(['sfdsf', 'sdf', 909])
+    console.time('push')
+    for (let i = 0; i < SIZE; i++) {
+        await farmers.push([
+            rand(fnames) + ' ' + rand(fnames) + ' ' + rand(surnames),
+            rand(animals),
+            intB(1918, 2008),
+        ])
+    }
+    console.timeEnd('push')
+    console.time('pushMany')
+    await farmers.push(['Danny', 'sheep', 2009])
+    const arr: (string | number)[][] = []
+    for (let i = 0; i < SIZE; i++) {
+        arr.push([
+            rand(fnames) + ' ' + rand(fnames) + ' ' + rand(surnames),
+            rand(animals),
+            intB(1918, 2008),
+        ])
+    }
+    await farmers.pushMany(arr)
+    console.timeEnd('pushMany')
+    console.log((await farmers.select())[0])
+    const hash = await farmers.hashIndex('name')
+
+    console.log('a', hash['Danny'])
+    let danny = await farmers.hashFind('name', 'Danny')
+    console.log('b', hash['Danny'], danny)
+    danny = await farmers.hashFind('name', 'Danny')
+    console.log('c', hash['Danny'], danny)
+}
+pushVsMany()

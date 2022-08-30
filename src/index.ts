@@ -2,10 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import { Buffer } from 'buffer'
-import { stringify } from 'querystring'
 import { EventEmitter, Readable } from 'stream'
-import { resolve } from 'path'
-import { CreateReadStreamOptions } from 'fs/promises'
 import { ReadStreamOptions } from '../types'
 
 console.time()
@@ -58,11 +55,12 @@ type column = [string, string, number]
 
 export type schema = column[]
 type row = (string | number)[]
-type getRowReturn = Promise<{ id: number; [key: string]: string | number } | false>
+type rowReturn = { id: number; [key: string]: string | number }
 interface queueItem {
     type: string
     data: Buffer
     symbol: symbol
+    id?: number
 }
 interface tableConfig {
     ifExists?: 'overwrite' | 'read' | 'error'
@@ -73,7 +71,7 @@ export interface queryOptions {
     filter?: (arg: obj) => boolean
     map?: (arg: obj) => any
     limit?: number
-    offset?: number
+    startId?: number
 }
 
 export class Table extends EventEmitter {
@@ -100,7 +98,13 @@ export class Table extends EventEmitter {
             throw 'table not yet created. use createTable() or getTable()'
         }
     }
-
+    /**
+     *
+     * @param {string} name - name of the tablr
+     * @param columns
+     * @param config - configure
+     * @returns
+     */
     public async createTable(name: string, columns: schema, config?: tableConfig): Promise<Table> {
         if (fs.existsSync(this.path)) {
             if (config?.ifExists === 'read') {
@@ -240,6 +244,10 @@ export class Table extends EventEmitter {
             case 'addMany':
                 this.addMany(item)
                 break
+            case 'updateRow':
+                //@ts-ignore
+                this.updateRow(item)
+                break
             default:
                 break
         }
@@ -259,9 +267,22 @@ export class Table extends EventEmitter {
             this.emit(symbol, { startId: initRowCount + 1, added: rowAddCount })
         )
     }
+    private updateRow({ id, data: buff, symbol }: Required<queueItem>) {
+        const uStream = fs.createWriteStream(this.path, {
+            encoding: 'binary',
+            flags: 'r+',
+            start: this.start + (id - 1) * this.rowSize,
+        })
+        uStream.on('open', () => {
+            uStream.write(buff, () => {
+                uStream.close()
+                this.emit(symbol)
+            })
+        })
+    }
 
     //I'm shocked I got this typescript to work
-    public async push<T extends Array<any>>(row: [...T]) {
+    public async push<T extends Array<any>>(row: [...T]): Promise<obj> {
         this.checkInit()
         return new Promise((resolve, reject) => {
             const rowBuffer = this.makeRowBuffer<T>(row)
@@ -296,6 +317,27 @@ export class Table extends EventEmitter {
             this.add({
                 type: 'addMany',
                 data: Buffer.concat(rowsBuffer),
+                symbol,
+            })
+        })
+    }
+    public async update<T extends Array<any>>(id: number, row: [...T]): Promise<obj> {
+        if (id < 1) throw "Id's start at 1!"
+        if (id > this.rowSize) throw 'row with that id ' + id + " doesn't exist"
+        return new Promise((resolve, reject) => {
+            const rowBuffer = this.makeRowBuffer<T>(row)
+            const symbol = Symbol()
+            this.once(symbol, () => {
+                const out: obj = { id }
+                for (let i = 0; i < row.length; i++) {
+                    out[this.columns[i][0]] = row[i]
+                }
+                resolve(out)
+            })
+            this.add({
+                type: 'updateRow',
+                data: rowBuffer,
+                id,
                 symbol,
             })
         })
@@ -352,7 +394,7 @@ export class Table extends EventEmitter {
         return Buffer.concat([newRow, Buffer.alloc(padding)])
     }
 
-    public async getRow(id: number): getRowReturn {
+    public async getRow(id: number): Promise<rowReturn | false> {
         if (id < 1) throw "Id's start at 1!" // check impact of this on speed
         return new Promise((resolve, reject) => {
             const offset = (id - 1) * this.rowSize + this.start
@@ -403,15 +445,15 @@ export class Table extends EventEmitter {
         })
     }
 
-    public async select(options: queryOptions = {}): Promise<row[]> {
+    public async select(options: queryOptions = {}): Promise<rowReturn[]> {
         // if (options.map && options.columns)
         //     throw 'cannot use options map and columns together. pick one'
         return new Promise(async (resolve, reject) => {
             let resultCount = 0
             const rowsPerChunk = 10000 // Biggest effect on speed
-            const skip = options.offset ? options.offset : 0
+            const skip = options.startId ? options.startId : 1
             const streamConfig: ReadStreamOptions = {
-                start: this.start + skip * this.rowSize,
+                start: this.start + (skip - 1) * this.rowSize,
                 highWaterMark: this.rowSize * rowsPerChunk,
             }
             // if (options.limit) {
@@ -429,7 +471,7 @@ export class Table extends EventEmitter {
                     let colOffset = 0
                     const cols = this.columns
                     let out: obj = {
-                        id: chunkIndex * rowsPerChunk + i + 1 + skip,
+                        id: chunkIndex * rowsPerChunk + i + skip,
                     }
 
                     for (let i = 0; i < cols.length; i++) {

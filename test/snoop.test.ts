@@ -51,7 +51,6 @@ describe('main suite', () => {
             trains.createTable(
                 'noobs',
                 [
-                    // ['id', 'ints', 4],
                     ['wheels', 'int', 4],
                     ['wheels', 'string', 8],
                 ],
@@ -212,6 +211,9 @@ describe('Adding Data', () => {
         let readRow5 = await trains.getRow(5)
         expect(readRow5).toEqual({ id: 5, model: 'loco', produced: 4325 })
         const pos = outcome.startId + outcome.added
+        expect(trains.getRowCountSync()).toEqual(pos)
+        //@ts-ignore
+        expect(trains.rows).toEqual(pos)
         expect(rowAfter).toEqual({
             id: pos,
             model: 'vvvolo',
@@ -229,6 +231,36 @@ describe('Adding Data', () => {
         })
         const outcome2 = await trains2.pushMany(manyRows)
         expect(outcome2).toEqual({ added: 6, startId: 11 })
+    })
+    it('updates correctly', async () => {
+        const trains = makeRandomTable()
+        await trains.createTable('trains', schema1, { ifExists: 'error' })
+        const manyRows = [
+            ['going', 435],
+            ['loco', 4325],
+            ['down', 678],
+            ['in', 786],
+            ['', 786],
+            ['alcupolco', 786],
+        ]
+        await trains.pushMany(manyRows)
+        const updated = await trains.update(2, ['lavidaloca', 777])
+        expect(updated).toEqual({
+            id: 2,
+            model: 'lavidaloca',
+            produced: 777,
+        })
+        let res
+        for (let i = 0; i < 2000; i++) {
+            res = await trains.update(2, ['in a gadda', intB(2, 9090)])
+        }
+
+        const read = await trains.getRow(2)
+        expect(res).toEqual(read)
+        await expect(trains.update(66, ['lavidaloca', 777])).rejects.toContain('row with that id')
+        await expect(trains.update(6, ['the rivers of babylon', 777])).rejects.toContain(
+            'length must match schema'
+        )
     })
     it('Pushing string too large fails', async () => {
         const trains = makeRandomTable()
@@ -351,6 +383,43 @@ describe('Selecting data', () => {
     })
     it('rowCountSync works', () => {
         const count = farmers.getRowCountSync()
+        expect(count).toEqual(SIZE + EXTRA + 1)
+    })
+    it('limit and startId works', async () => {
+        const firstTenSheep = await farmers.select({
+            filter: row => row.animal === 'sheep',
+            limit: 10,
+        })
+
+        expect(firstTenSheep.length).toEqual(10)
+        const SixToTenSheep = await farmers.select({
+            filter: row => row.animal === 'sheep',
+            limit: 5,
+            startId: firstTenSheep[5].id,
+        })
+        expect(SixToTenSheep.length).toEqual(5)
+        expect(firstTenSheep.slice(5, 11)).toEqual(SixToTenSheep)
+    })
+    //in no way a pure function
+    async function animalCount(animal: string) {
+        let res = await farmers.select({ limit: 100, filter: row => row.animal === animal })
+        const all = res
+        while (res.length > 0) {
+            res = await farmers.select({
+                limit: 100,
+                startId: res[res.length - 1].id + 1,
+                filter: row => row.animal === animal,
+            })
+            all.push(...res)
+        }
+        return all.length
+    }
+    it('startId works to paginate', async () => {
+        let count = 0
+        const animals = ['sheep', 'cow', 'pig', 'chicken', 'unicorn']
+        for (let animal of animals) {
+            count += await animalCount(animal)
+        }
         expect(count).toEqual(SIZE + EXTRA + 1)
     })
     it('filter works', async () => {

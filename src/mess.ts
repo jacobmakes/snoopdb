@@ -52,7 +52,7 @@ async function q() {
     console.time('ff')
     const options: queryOptions = {
         limit: 7,
-        offset: 42656,
+        startId: 42656,
         filter: row => row.model.includes('vv') && row.produced < 80000000,
     }
     const dat = await cars.select(options)
@@ -360,9 +360,7 @@ async function multi() {
 async function pushVsMany() {
     const SIZE = 1000
     const farmers = new Table('samples/f200')
-    await (
-        await farmers.createTable('farmers', farmersSchema, { ifExists: 'overwrite' })
-    ).push(['sfdsf', 'sdf', 909])
+    await farmers.createTable('farmers', farmersSchema, { ifExists: 'overwrite' })
     console.time('push')
     for (let i = 0; i < SIZE; i++) {
         await farmers.push([
@@ -383,14 +381,32 @@ async function pushVsMany() {
         ])
     }
     await farmers.pushMany(arr)
-    console.timeEnd('pushMany')
-    console.log((await farmers.select())[0])
-    const hash = await farmers.hashIndex('name')
+    // console.timeEnd('pushMany')
+    // console.log((await farmers.select())[0])
+    // const hash = await farmers.hashIndex('name')
 
-    console.log('a', hash['Danny'])
-    let danny = await farmers.hashFind('name', 'Danny')
-    console.log('b', hash['Danny'], danny)
-    danny = await farmers.hashFind('name', 'Danny')
-    console.log('c', hash['Danny'], danny)
+    // console.log('a', hash['Danny'])
+    // let danny = await farmers.hashFind('name', 'Danny')
+    // console.log('b', hash['Danny'], danny)
+    // danny = await farmers.hashFind('name', 'Danny')
+    // console.log('c', hash['Danny'], danny)
+    async function animalCount(animal: string) {
+        let res = await farmers.select({ limit: 100, filter: row => row.animal === animal })
+        const all = res
+        while (res.length > 0) {
+            res = await farmers.select({
+                limit: 100,
+                startId: res[res.length - 1].id + 1,
+                filter: row => row.animal === animal,
+            })
+            all.push(...res)
+        }
+        return all.length
+    }
+    let count = 0
+    for (let animal of animals) {
+        count += await animalCount(animal)
+    }
+    console.log(count)
 }
 pushVsMany()

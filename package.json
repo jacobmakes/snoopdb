@@ -1,6 +1,6 @@
 {
   "name": "snoopdb",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "A zero dependency library using a file as a database",
   "main": "dist/index.js",
   "types": "dist/types/index.d.ts",
@@ -12,6 +12,22 @@
     "ts-node": "^10.9.1"
   },
   "scripts": {
-    "test": "jest"
-  }
+    "test": "jest",
+    "build":"tsc",
+    "prepublishOnly": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jacobmakes/snoopdb.git"
+  },
+  "keywords": [
+    "database",
+    "file",
+    "db",
+    "snoopdog"
+  ],
+  "bugs": {
+    "url": "https://github.com/jacobmakes/snoopdb/issues"
+  },
+  "homepage": "https://github.com/jacobmakes/snoopdb.git"
 }

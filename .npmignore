@@ -2,3 +2,7 @@
 samples
 .DS_Store
 scratch
+test
+.prettierignore          
+.prettierrc              
+jest.config.js       

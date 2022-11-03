@@ -60,18 +60,18 @@ interface ReadStreamOptions extends StreamOptions {
 //console.log(os.endianness())
 const colTypes = ['string', 'int']
 
-type column = [string, string, number]
+export type column = [string, string, number]
 
 export type schema = column[]
-type row = (string | number)[]
-type rowReturn = { id: number; [key: string]: string | number }
-interface queueItem {
+export type row = (string | number)[]
+export type rowReturn = { id: number; [key: string]: string | number }
+export interface queueItem {
     type: string
     data: Buffer
     symbol: symbol
     id?: number
 }
-interface tableConfig {
+export interface tableConfig {
     ifExists?: 'overwrite' | 'read' | 'error'
 }
 type obj = { [key: string]: any }

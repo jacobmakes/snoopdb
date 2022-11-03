@@ -19,29 +19,34 @@ npm i snoopdb
 ## Quick start
 
 ```js
-const booksSchema = [
-    ['title', 'string', 40],
-    ['author', 'string', 20],
-    ['released', 'int', 2],
-    ['sold', 'int', 4],
-]
-const books = new Table('books.db')
-await books.createTable('books', booksSchema, { ifExists: 'overwrite' })
-await books.push(['Harry Potter', 'JK rowling', 1982, 465436436])
+const { Table } = require('snoopdb')
 
-await books.pushMany([
-    ['mole diary', 'anne', 1982, 465436436],
-    ['scouting for gi', 'baden', 1943, 345342654],
-])
-const { id, title, author, released, sold } = await books.getRow(3)
-const allBooks = await books.select()
-const oldBooks = await books.select({ filter: row => row.released < 1950 })
-const bookDescription = await books.select({
-    map: book =>
-        `${book.title} written by ${book.author} was released ${
-            new Date().getFullYear() - book.released
-        } years ago`,
-})
+async function main(){
+    const booksSchema = [
+        ['title', 'string', 40],
+        ['author', 'string', 20],
+        ['released', 'int', 2],
+        ['sold', 'int', 4],
+    ]
+    const books = new Table('books.db')
+    await books.createTable('books', booksSchema, { ifExists: 'overwrite' })
+    await books.push(['Harry Potter', 'JK rowling', 1982, 465436436])
+
+    await books.pushMany([
+        ['mole diary', 'anne', 1982, 465436436],
+        ['scouting for gi', 'baden', 1943, 345342654],
+    ])
+    const { id, title, author, released, sold } = await books.getRow(3)
+    const allBooks = await books.select()
+    const oldBooks = await books.select({ filter: row => row.released < 1950 })
+    const bookDescription = await books.select({
+        map: book =>
+            `${book.title} written by ${book.author} was released ${
+                new Date().getFullYear() - book.released
+            } years ago`,
+    })
+}
+main()
 ```
 
 ## Guide

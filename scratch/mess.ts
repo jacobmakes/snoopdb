@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { resolve } from 'path'
 import * as stream from 'stream'
-import { Table, schema, queryOptions } from '.'
+import { Table, schema, queryOptions } from '../src'
 
 //cars
 const schema1: schema = [

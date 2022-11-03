@@ -104,7 +104,7 @@ export class Table extends EventEmitter {
     }
     private checkInit() {
         if (!this.initialized) {
-            throw 'table not yet created. use createTable() or getTable()'
+            throw new Error('table not yet created. use createTable() or getTable()')
         }
     }
     /**
@@ -123,7 +123,7 @@ export class Table extends EventEmitter {
                 if (this.initialized) return this
                 return this.getTable()
             } else if (config?.ifExists !== 'overwrite') {
-                throw 'table already exists set config.ifExists to get or overwrite'
+                throw new Error( 'table already exists set config.ifExists to get or overwrite')
             }
         }else if(pathArr.length>1){            
             fs.mkdirSync(folders,{recursive:true})
@@ -141,27 +141,27 @@ export class Table extends EventEmitter {
             // ? schema
             // ? other
             if (!columns) {
-                return reject('Table Schema undefined')
+                return reject(new Error('Table Schema undefined'))
             }
             this.writeStream = fs.createWriteStream(this.path, { encoding: 'binary', flags: 'a' })
             this.writeStream.on('open', () => {
                 const colNames: string[] = []
                 columns.forEach(col => {
-                    if (col[0] === 'id') return reject('cannot name column "id"')
+                    if (col[0] === 'id') return reject(new Error('cannot name column "id"'))
                     colNames.push(col[0])
                     if (!colTypes.includes(col[1])) {
-                        return reject(
-                            `invalid type ${col[1]} acceptable types: ${colTypes.join('","')}`
+                        return reject(new Error(
+                            `invalid type ${col[1]} acceptable types: ${colTypes.join('","')}`)
                         )
                     }
                     if (col[1] === 'int') {
                         if (col[2] < 1 || col[2] > 6) {
-                            return reject(`int column size must be between 1 and 6`)
+                            return reject(new Error(`int column size must be between 1 and 6`))
                         }
                     }
                 })
                 if (colNames.length !== new Set(colNames).size)
-                    return reject('column names must be unique')
+                    return reject(new Error('column names must be unique'))
 
                 const schemaLength = Buffer.from(JSON.stringify(columns)).length
                 const START = schemaLength + 12 // + add options hedaers to size
@@ -184,7 +184,7 @@ export class Table extends EventEmitter {
                 this.start = START
                 this.rowSize = calculateRowSize(this.columns)
                 this.rows = 0
-                console.log('created table')
+                //console.log('created table')
                 this.initialized = true
                 return resolve(this)
             })
@@ -192,8 +192,8 @@ export class Table extends EventEmitter {
     }
     public async getTable(): Promise<Table> {
         //check if table exists
-        if (!fs.existsSync(this.path)) throw 'table does not exist'
-        if (this.initialized) throw 'table already initialized'
+        if (!fs.existsSync(this.path)) throw new Error('table does not exist')
+        if (this.initialized) throw new Error('table already initialized')
 
         return new Promise((resolve, reject) => {
             const readMeta = fs.createReadStream(this.path, { end: 12 })
@@ -215,7 +215,7 @@ export class Table extends EventEmitter {
                         if (error) reject(error)
                         const { size } = stat
                         const rowCount = (size - this.start) / this.rowSize
-                        if (!Number.isInteger(rowCount)) reject('non integer rowCount')
+                        if (!Number.isInteger(rowCount)) reject(new Error('non integer rowCount'))
                         this.rows = rowCount
                         readMeta.close()
                         readSchema.close()
@@ -332,8 +332,8 @@ export class Table extends EventEmitter {
         })
     }
     public async update<T extends Array<any>>(id: number, row: [...T]): Promise<obj> {
-        if (id < 1) throw "Id's start at 1!"
-        if (id > this.rowSize) throw 'row with that id ' + id + " doesn't exist"
+        if (id < 1) throw new Error("Id's start at 1!")
+        if (id > this.rowSize) throw new Error('row with that id ' + id + " doesn't exist")
         return new Promise((resolve, reject) => {
             const rowBuffer = this.makeRowBuffer<T>(row)
             const symbol = Symbol()
@@ -354,7 +354,7 @@ export class Table extends EventEmitter {
     }
     private makeRowBuffer<T extends Array<any>>(row: [...T]) {
         if (row.length !== this.columns?.length) {
-            throw 'row.length must match schema.length. row:' + row
+            throw new Error('row.length must match schema.length. row:' + row)
         }
         const buffers: Buffer[] = []
 
@@ -365,7 +365,7 @@ export class Table extends EventEmitter {
                 case 'string':
                     const stringBuff = Buffer.from(row[i])
                     if (stringBuff.length > this.columns[i][2]) {
-                        throw (
+                        throw new Error(
                             'row.length must match schema.length a row: `' +
                             row[i] +
                             '` > ' +
@@ -376,9 +376,9 @@ export class Table extends EventEmitter {
                     stringBuff.copy(buff)
                     break
                 case 'int':
-                    if (!Number.isInteger(row[i])) throw 'non integer value: ' + row[i]
+                    if (!Number.isInteger(row[i])) throw new Error( 'non integer value: ' + row[i])
                     if (isIntSafe(row[i], this.columns[i][2]))
-                        throw (
+                        throw new Error(
                             row[i] +
                             ' out of range: -' +
                             256 ** this.columns[i][2] / 2 +
@@ -391,7 +391,7 @@ export class Table extends EventEmitter {
                     break
                 default:
                     console.error(this.columns[i][1])
-                    throw 'no type match found'
+                    throw new Error( 'no type match found')
             }
             buffers.push(buff)
         }
@@ -399,13 +399,13 @@ export class Table extends EventEmitter {
         const padding = this.rowSize - newRow.length
         //final redundant check
         if (padding < 0) {
-            throw 'row too large'
+            throw new Error('row too large')
         }
         return Buffer.concat([newRow, Buffer.alloc(padding)])
     }
 
     public async getRow(id: number): Promise<rowReturn | false> {
-        if (id < 1) throw "Id's start at 1!" // check impact of this on speed
+        if (id < 1) throw new Error("Id's start at 1!" )// check impact of this on speed
         return new Promise((resolve, reject) => {
             const offset = (id - 1) * this.rowSize + this.start
             const str = fs.createReadStream(this.path, {
@@ -545,7 +545,7 @@ export class Table extends EventEmitter {
     }
     private async createHash(colName: string, fast = false): Promise<HashIndex | FastHashIndex> {
         if (!this.columns.map(col => col[0]).includes(colName))
-            throw 'column ' + colName + ' does not exist'
+            throw new Error( 'column ' + colName + ' does not exist')
         return new Promise(async (resolve, reject) => {
             const hash: obj = {}
             await this.select({
@@ -576,7 +576,7 @@ export class Table extends EventEmitter {
     ): Promise<any[]> {
         return new Promise(async (resolve, reject) => {
             if (!this?.indexes?.[colName]?.hash) {
-                reject('no hash index for`' + colName + '`')
+                reject(new Error('no hash index for`' + colName + '`'))
                 return
             }
             const hash = this.indexes[colName].hash
@@ -613,7 +613,7 @@ export class Table extends EventEmitter {
     async hashFindFast<T extends string | number>(colName: string, lookup: T): Promise<any[]> {
         return new Promise(async (resolve, reject) => {
             if (!this?.indexes?.[colName]?.fastHash) {
-                reject('no fastHash index for`' + colName + '`')
+                reject(new Error('no fastHash index for`' + colName + '`'))
                 return
             }
             //@ts-ignore

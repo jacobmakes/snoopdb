@@ -1,6 +1,6 @@
 {
   "name": "snoopdb",
-  "version": "0.0.3",
+  "version": "0.0.5",
   "description": "A zero dependency library using a file as a database",
   "main": "dist/index.js",
   "types": "dist/types/index.d.ts",

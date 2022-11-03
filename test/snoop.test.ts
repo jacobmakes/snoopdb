@@ -56,7 +56,7 @@ describe('main suite', () => {
                 ],
                 { ifExists: 'error' }
             )
-        ).rejects.toBe('column names must be unique')
+        ).rejects.toThrow('column names must be unique')
     })
     it('cannot have id column', async () => {
         const trains = makeRandomTable()
@@ -69,7 +69,7 @@ describe('main suite', () => {
                 ],
                 { ifExists: 'error' }
             )
-        ).rejects.toBe('cannot name column "id"')
+        ).rejects.toThrow('cannot name column "id"')
     })
     it('column size must be between 1 and 6', async () => {
         const s1: schema = [
@@ -81,28 +81,28 @@ describe('main suite', () => {
             ['produced', 'int', 7],
         ]
         const trains = makeRandomTable()
-        await expect(trains.createTable('trains', s1, { ifExists: 'error' })).rejects.toContain(
+        await expect(trains.createTable('trains', s1, { ifExists: 'error' })).rejects.toThrow(
             'column size must be between'
         )
         const trains2 = makeRandomTable()
-        await expect(trains2.createTable('trains', s2, { ifExists: 'error' })).rejects.toContain(
+        await expect(trains2.createTable('trains', s2, { ifExists: 'error' })).rejects.toThrow(
             'column size must be between'
         )
     })
     it("reading a table that doesn't exist fails", async () => {
         const trains = makeRandomTable()
-        await expect(trains.getTable()).rejects.toBe('table does not exist')
+        await expect(trains.getTable()).rejects.toThrow('table does not exist')
     })
     it('creating a table that exists fails if configured', async () => {
         const trains = makeRandomTable()
         await trains.createTable('trains', schema1, { ifExists: 'error' })
-        await expect(trains.createTable('trains', schema1, { ifExists: 'error' })).rejects.toBe(
+        await expect(trains.createTable('trains', schema1, { ifExists: 'error' })).rejects.toThrow(
             'table already exists set config.ifExists to get or overwrite'
         )
     })
     it('Pushing into created table fails', async () => {
         const trains = makeRandomTable()
-        await expect(trains.push(['foggy', 12334556])).rejects.toContain('table not yet created')
+        await expect(trains.push(['foggy', 12334556])).rejects.toThrow('table not yet created')
     })
 
     //these two tests show how confusing testing thrown errors is
@@ -182,8 +182,8 @@ describe('Adding Data', () => {
     it('reading bad id returns false', async () => {
         const trains = makeRandomTable()
         await trains.createTable('trains', schema1, { ifExists: 'error' })
-        expect(trains.getRow(0)).rejects.toBe("Id's start at 1!")
-        expect(trains.getRow(-5646)).rejects.toBe("Id's start at 1!")
+        expect(trains.getRow(0)).rejects.toThrow("Id's start at 1!")
+        expect(trains.getRow(-5646)).rejects.toThrow("Id's start at 1!")
         expect(await trains.getRow(1035)).toEqual(false)
         expect(await trains.getRow(102314324312435)).toEqual(false)
         await trains.push(['cleaveland', 435])
@@ -257,15 +257,15 @@ describe('Adding Data', () => {
 
         const read = await trains.getRow(2)
         expect(res).toEqual(read)
-        await expect(trains.update(66, ['lavidaloca', 777])).rejects.toContain('row with that id')
-        await expect(trains.update(6, ['the rivers of babylon', 777])).rejects.toContain(
+        await expect(trains.update(66, ['lavidaloca', 777])).rejects.toThrow('row with that id')
+        await expect(trains.update(6, ['the rivers of babylon', 777])).rejects.toThrow(
             'length must match schema'
         )
     })
     it('Pushing string too large fails', async () => {
         const trains = makeRandomTable()
         await trains.createTable('trains', schema1, { ifExists: 'error' })
-        expect(trains.push(['There once was an ugly duckling', 435])).rejects.toContain(
+        expect(trains.push(['There once was an ugly duckling', 435])).rejects.toThrow(
             'row.length must match schema.length a row'
         )
         expect(
@@ -273,7 +273,7 @@ describe('Adding Data', () => {
                 ['quack', 435],
                 ['There once was an ugly duckling', 435],
             ])
-        ).rejects.toContain('row.length must match schema.length a row')
+        ).rejects.toThrow('row.length must match schema.length a row')
     })
 
     it('Pushing int too large fails int 1', async () => {
@@ -284,8 +284,8 @@ describe('Adding Data', () => {
         const trains = makeRandomTable()
         await trains.createTable('trains', s1, { ifExists: 'error' })
         await trains.push(['duck', -128])
-        await expect(trains.push(['duck', 128])).rejects.toContain('out of range')
-        await expect(trains.push(['duck', -455])).rejects.toContain('out of range')
+        await expect(trains.push(['duck', 128])).rejects.toThrow('out of range')
+        await expect(trains.push(['duck', -455])).rejects.toThrow('out of range')
     })
     it('Pushing int too large fails int 4', async () => {
         const s1: schema = [
@@ -295,10 +295,10 @@ describe('Adding Data', () => {
         const trains = makeRandomTable()
         await trains.createTable('trains', s1, { ifExists: 'error' })
         await trains.push(['duck', 256 ** 4 / 2 - 2])
-        await expect(trains.push(['duck', 256 ** 4])).rejects.toContain('out of range')
-        await expect(trains.push(['duck', 256 ** 5])).rejects.toContain('out of range')
-        await expect(trains.push(['duck', 4523534542354325])).rejects.toContain('out of range')
-        await expect(trains.push(['duck', 4523534544354354352354325435])).rejects.toContain(
+        await expect(trains.push(['duck', 256 ** 4])).rejects.toThrow('out of range')
+        await expect(trains.push(['duck', 256 ** 5])).rejects.toThrow('out of range')
+        await expect(trains.push(['duck', 4523534542354325])).rejects.toThrow('out of range')
+        await expect(trains.push(['duck', 4523534544354354352354325435])).rejects.toThrow(
             'out of range'
         )
     })
@@ -439,7 +439,7 @@ describe('Selecting data', () => {
     describe('Index testing', () => {
         it('hash index works', async () => {
             await farmers.hashIndex('name')
-            await expect(farmers.hashIndex('age')).rejects.toContain('does not exist')
+            await expect(farmers.hashIndex('age')).rejects.toThrow('does not exist')
 
             let danny = await farmers.hashFind('name', 'Danny')
             expect(danny.length).toEqual(1)
@@ -451,11 +451,11 @@ describe('Selecting data', () => {
             await farmers.hashIndex('born')
             danny = await farmers.hashFind('born', 2009)
             expect(danny[0].name).toEqual('Danny')
-            await expect(farmers.hashFind('animal', 19)).rejects.toContain('no hash index for')
+            await expect(farmers.hashFind('animal', 19)).rejects.toThrow('no hash index for')
         })
         it('Fast hash index works', async () => {
             await farmers.hashIndexFast('name')
-            await expect(farmers.hashIndexFast('age')).rejects.toContain('does not exist')
+            await expect(farmers.hashIndexFast('age')).rejects.toThrow('column age does not exist')
 
             let danny = await farmers.hashFindFast('name', 'Danny')
             expect(danny.length).toEqual(1)
@@ -467,7 +467,7 @@ describe('Selecting data', () => {
             await farmers.hashIndexFast('born')
             danny = await farmers.hashFindFast('born', 2009)
             expect(danny[0].name).toEqual('Danny')
-            await expect(farmers.hashFindFast('animal', 19)).rejects.toContain(
+            await expect(farmers.hashFindFast('animal', 19)).rejects.toThrow(
                 'no fastHash index for'
             )
         })

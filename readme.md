@@ -23,18 +23,18 @@ const { Table } = require('snoopdb')
 
 async function main(){
     const booksSchema = [
-        ['title', 'string', 40],
+        ['title', 'string', 100],
         ['author', 'string', 20],
         ['released', 'int', 2],
         ['sold', 'int', 4],
     ]
     const books = new Table('books.db')
     await books.createTable('books', booksSchema, { ifExists: 'overwrite' })
-    await books.push(['Harry Potter', 'JK rowling', 1982, 465436436])
+    await books.push(["Harry Potter and the Philosopher's Stone", 'JK rowling', 1997, 465436436])
 
     await books.pushMany([
-        ['mole diary', 'anne', 1982, 465436436],
-        ['scouting for gi', 'baden', 1943, 345342654],
+        ['The Secret Diary of Adrian Mole, Aged 13¾', 'Sue Townsend', 1982, 465436436],
+        ['scouting for boys', 'Robert Baden-Powell', 1908, 345342654],
     ])
     const { id, title, author, released, sold } = await books.getRow(3)
     const allBooks = await books.select()
@@ -45,6 +45,7 @@ async function main(){
                 new Date().getFullYear() - book.released
             } years ago`,
     })
+    console.log(allBooks)
 }
 main()
 ```
@@ -67,7 +68,7 @@ For ints the size must be between 1 and 6 inclusive where the max number is (256
 
 ```js
 const booksSchema = [
-    ['title', 'string', 40],
+    ['title', 'string', 100],
     ['author', 'string', 20],
     ['released', 'int', 2],
     ['sold', 'int', 4],
@@ -95,7 +96,7 @@ You push data into the table with an array that contains the data in the same or
 const { id, title, author, released, sold } = await books.getRow(3)
 ```
 
-The getRow function takes the row id (starts at 1) and returns an object containing the row data. They keys are the column names defined in the schema.
+The getRow function takes the row id (starts at 1) and returns an object containing the row data. They keys are the column names defined in the schema. This returns false if the row cannot be found.
 
 You can get an array of multiple rows using the select function
 

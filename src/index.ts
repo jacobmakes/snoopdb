@@ -1,20 +1,12 @@
 import * as fs from 'fs'
-import * as path from 'path'
+import { join, sep } from 'path'
 import * as os from 'os'
 import { Buffer } from 'buffer'
 import { EventEmitter, Readable } from 'stream'
-import { ReadStreamOptions } from '../types'
 
-console.time()
 
-type rP = Parameters<typeof fs.createReadStream>
-function readBinary(path: rP[0], options?: rP[1]) {
-    const str = fs.createReadStream(path, options)
-    // const str= fs.createReadStream('myBinaryFile'); //B
-    let chunks = ''
-    str.on('data', chunk => (chunks += chunk.toString('utf-8'))) //A & B
-    str.on('end', () => console.log('ll', chunks, chunks.length)) //A 5.609ms
-}
+
+
 function isIntSafe(int: number, bytes: number) {
     const max = 256 ** bytes / 2
     return int < -max || int >= max
@@ -45,6 +37,23 @@ function calculateRowSize(schema: schema) {
         }
     }
     return bytes
+}
+
+interface StreamOptions {
+    flags?: string | undefined
+    encoding?: BufferEncoding | undefined
+    fd?: number | fs.promises.FileHandle | undefined
+    mode?: number | undefined
+    autoClose?: boolean | undefined
+    /**
+     * @default false
+     */
+    emitClose?: boolean | undefined
+    start?: number | undefined
+    highWaterMark?: number | undefined
+}
+interface ReadStreamOptions extends StreamOptions {
+    end?: number | undefined
 }
 
 //array format [type,max value,]
@@ -100,12 +109,15 @@ export class Table extends EventEmitter {
     }
     /**
      *
-     * @param {string} name - name of the tablr
+     * @param {string} name - name of the table
      * @param columns
-     * @param config - configure
+     * @param {tableConfig} config - {ifExists: behaviour if the file already exists}
      * @returns
      */
     public async createTable(name: string, columns: schema, config?: tableConfig): Promise<Table> {
+        const pathArr= this.path.split(sep)       
+        const folders = join(...pathArr.slice(0,pathArr.length-1))
+        
         if (fs.existsSync(this.path)) {
             if (config?.ifExists === 'read') {
                 if (this.initialized) return this
@@ -113,6 +125,8 @@ export class Table extends EventEmitter {
             } else if (config?.ifExists !== 'overwrite') {
                 throw 'table already exists set config.ifExists to get or overwrite'
             }
+        }else if(pathArr.length>1){            
+            fs.mkdirSync(folders,{recursive:true})
         }
         return new Promise((resolve, reject) => {
             this.name = name
@@ -168,7 +182,6 @@ export class Table extends EventEmitter {
                 //     end: SCHEMA_END - 1,
                 // })
                 this.start = START
-                console.log(headers)
                 this.rowSize = calculateRowSize(this.columns)
                 this.rows = 0
                 console.log('created table')
@@ -183,12 +196,10 @@ export class Table extends EventEmitter {
         if (this.initialized) throw 'table already initialized'
 
         return new Promise((resolve, reject) => {
-            console.log('this.path', this.path)
             const readMeta = fs.createReadStream(this.path, { end: 12 })
             readMeta.on('data', (chunk: Buffer) => {
                 this.start = chunk.readInt32LE()
                 const schemaEnd = chunk.readInt32LE(8)
-                console.log('schemaEnd', schemaEnd)
 
                 const readSchema = fs.createReadStream(this.path, {
                     start: 12,
@@ -197,7 +208,6 @@ export class Table extends EventEmitter {
                 })
                 //not calling on end because high water mark so low
                 readSchema.on('data', (chunk: Buffer) => {
-                    console.log('cols', chunk.toString())
                     const cols = JSON.parse(chunk.toString())
                     this.columns = cols
                     this.rowSize = calculateRowSize(this.columns)
@@ -424,7 +434,6 @@ export class Table extends EventEmitter {
                             break
 
                         default:
-                            console.log('lol')
                             break
                     }
                 }
@@ -598,7 +607,6 @@ export class Table extends EventEmitter {
                 rows.push(...(await Promise.all(chunk.map(async id => await this.getRow(id)))))
             }
 
-            // console.log('rows', rows)
             return resolve(rows)
         })
     }

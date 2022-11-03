@@ -11,17 +11,15 @@ const FARMER_PATH = resolve(TEMP_DIR, 'farmers')
 beforeAll(() => {
     if (fs.existsSync(TEMP_DIR)) fs.rmSync(TEMP_DIR, { recursive: true })
     fs.mkdirSync(TEMP_DIR)
-    console.log(fs.statSync(TEMP_DIR))
 })
-// afterAll(() => {
+afterAll(() => {
 // given up for windows
-//     try {
-//         console.log(fs.statSync(TEMP_DIR))
-//         fs.rmdirSync(TEMP_DIR)
-//     } catch (err) {
-//         console.error(err)
-//     }
-// })
+    try {
+        fs.rmdirSync(TEMP_DIR)
+    } catch (err) {
+        console.error(err)
+    }
+})
 
 const farmersSchema: schema = [
     ['name', 'string', 30],

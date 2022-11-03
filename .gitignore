@@ -2,3 +2,5 @@ node_modules
 samples
 dist
 test/temp*/
+coverage
+.DS_Store

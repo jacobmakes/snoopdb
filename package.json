@@ -1,4 +1,8 @@
 {
+  "name": "snoopdb",
+  "version": "0.0.1",
+  "description": "A zero dependency library using a file as a database",
+  "main": "index.js",
   "devDependencies": {
     "@types/jest": "^28.1.7",
     "@types/node": "^18.7.2",

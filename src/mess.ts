@@ -143,9 +143,9 @@ async function main2() {
 }
 //main2()
 
-function slow(filter, limit) {
+function slow(filter:queryOptions["filter"], limit:number|undefined) {
     console.time('slow')
-    const data = fs.readFileSync('./samples/cars.json')
+    const data = fs.readFileSync('./samples/cars.json','utf-8')
     const arr = JSON.parse(data)
     //const filtered = arr.filter(row => row.model.includes('vv') && row.produced < 80000)
     const results = []
@@ -191,7 +191,7 @@ const rand = (arr: any[]) => {
     return arr[Math.floor(Math.random() * arr.length)]
 }
 
-function intB(min, max) {
+function intB(min:number, max:number) {
     // min and max included
     return Math.floor(Math.random() * (max - min + 1) + min)
 }
@@ -288,14 +288,14 @@ async function multi() {
                 resolve(farmers)
             })
         }
-        var fn2 = function insertRow(data) {
-            // sample async action
-            console.log('og', data)
-            // return new Promise(resolve => {
-            //     const farmers = new Table('samples/farmers3.db')
-            //     resolve(farmers.path)
-            // })
-        }
+        // var fn2 = function insertRow(data) {
+        //     // sample async action
+        //     console.log('og', data)
+        //     // return new Promise(resolve => {
+        //     //     const farmers = new Table('samples/farmers3.db')
+        //     //     resolve(farmers.path)
+        //     // })
+        // }
         // map over forEach since it returns
 
         var actions = items.map(fn) // run the function over all items
@@ -359,7 +359,7 @@ async function multi() {
 //pushMany: 99.505ms
 async function pushVsMany() {
     const SIZE = 1000
-    const farmers = new Table('samples/f200')
+    const farmers = new Table('samples/long/path/f200')
     await farmers.createTable('farmers', farmersSchema, { ifExists: 'overwrite' })
     console.time('push')
     for (let i = 0; i < SIZE; i++) {

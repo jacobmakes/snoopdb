@@ -7,7 +7,7 @@ import { resolveSoa } from 'dns'
 
 const TEMP_DIR = resolve(__dirname, 'temp')
 const CAR_PATH = resolve(TEMP_DIR, 'where.db')
-const TRAIN_PATH = resolve(TEMP_DIR, 'train.db')
+const TRAIN_PATH = resolve(TEMP_DIR, 'long','path','train.db')
 
 function makeRandomTable() {
     const str = Math.random().toString(36).slice(2, 9)
@@ -17,13 +17,13 @@ function makeRandomTable() {
 
 beforeAll(() => {
     if (fs.existsSync(TEMP_DIR)) fs.rmSync(TEMP_DIR, { recursive: true })
-    fs.mkdirSync(TEMP_DIR)
+    fs.mkdirSync(TEMP_DIR,{recursive:true})
 })
-// afterAll(() => {
-//     console.log('removing', TEMP_DIR)
-//     //doesn't delete directory does delete contents
-//     fs.rmSync(TEMP_DIR, { recursive: true })
-// })
+afterAll(() => {
+    console.log('removing', TEMP_DIR)
+    //doesn't delete directory does delete contents
+    fs.rmSync(TEMP_DIR, { recursive: true })
+})
 const schema1: schema = [
     //id is auto
     ['model', 'string', 10],
